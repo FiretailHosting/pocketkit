@@ -55,14 +55,31 @@ you notice immediately. A mistyped directive fails the same safe way. Per-route
 middleware goes in a `GETMiddlewares` slice, named after its method for the same
 reason the handler is.
 
-**3. Auth is OIDC-only.** Password login is disabled on every auth collection at
-boot and re-disabled on every save, so it cannot be clicked back on in the
-dashboard. Point the OIDC provider at your [Rauthy](https://github.com/sebadob/rauthy)
-instance under **Collections > users > Options > OAuth2 > OpenID Connect**.
-Credentials live in the dashboard, never in the repo.
+**3. Auth is OIDC-only, through Rauthy.** Sign-in goes through
+[pocketbase-rauthy](https://github.com/FiretailHosting/pocketbase-rauthy):
 
-`_superusers` deliberately keeps its password. The dashboard is where OIDC gets
-configured, so locking it behind OIDC would leave nobody able to set OIDC up.
+```go
+pocketkit.New(pocketkit.WithRauthy(pocketkit.RauthyConfig{
+    RequiredGroup: "myapp-users",
+    SessionMaxAge: 12 * time.Hour,
+}))
+```
+
+Password and OTP login are off, accounts are created only through the OAuth2
+flow, and membership of `RequiredGroup` with a verified email is required.
+
+`SessionMaxAge` is the part worth understanding. PocketBase auth tokens last
+days, so disabling passwords is not enough on its own: without a session cap, a
+user removed from the Rauthy group keeps working access until their existing
+token expires. The session is therefore capped on every request, not only on
+refresh, and stale realtime connections are closed too, since HTTP middleware
+cannot reach a connection that is already open.
+
+Point the provider at your Rauthy instance in the dashboard under
+**Collections > users > Options > OAuth2 > OpenID Connect**. Credentials live
+there, never in the repo. `_superusers` keeps its password: the dashboard is
+where OIDC gets configured, so locking it behind OIDC would leave nobody able
+to set it up.
 
 **4. Hooks are files too.** A directory named after a PocketBase hook binds to it.
 A directory above it scopes it to a collection.

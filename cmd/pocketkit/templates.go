@@ -17,9 +17,11 @@ import (
 
 	"github.com/FiretailHosting/pocketkit"
 
+	"%[1]s/internal/auth"
+
 	// Committed migrations are the schema's source of truth. Blank-importing
 	// them here is what makes a fresh clone rebuild the exact same database.
-	_ "%s/migrations"
+	_ "%[1]s/migrations"
 )
 
 // frontend is the built site, compiled into the binary so a release is one
@@ -33,7 +35,10 @@ import (
 var frontend embed.FS
 
 func main() {
-	app := pocketkit.New(pocketkit.WithFrontendFS(frontend))
+	app := pocketkit.New(
+		pocketkit.WithFrontendFS(frontend),
+		pocketkit.WithRauthy(auth.Rauthy),
+	)
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
@@ -269,4 +274,50 @@ jobs:
               --generate-notes \
               dist/*
           fi
+`
+
+const tmplAuthConfig = `// Package auth holds this app's Rauthy sign-in settings.
+//
+// They live here because both main.go and the migration that applies them to
+// the users collection need the same values.
+package auth
+
+import (
+	"time"
+
+	"github.com/FiretailHosting/pocketkit"
+)
+
+// Rauthy is this app's sign-in policy.
+//
+// RequiredGroup must match a real group in your Rauthy instance; until it does,
+// nobody can sign in, which is the correct failure for an OIDC-only app.
+var Rauthy = pocketkit.RauthyConfig{
+	RequiredGroup: "%s-users",
+
+	// How long a session survives after the last Rauthy sign-in. This is the
+	// window in which someone removed from the group still has access, so keep
+	// it short rather than matching PocketBase's multi-day token lifetime.
+	SessionMaxAge: 12 * time.Hour,
+}
+`
+
+const tmplAuthMigration = `package migrations
+
+import (
+	rauthy "github.com/FiretailHosting/pocketbase-rauthy"
+	"github.com/pocketbase/pocketbase/core"
+	m "github.com/pocketbase/pocketbase/migrations"
+
+	"%s/internal/auth"
+)
+
+// Applies the Rauthy sign-in policy to the users collection: password and OTP
+// off, OAuth2 on, account creation restricted to the OAuth2 flow, and the
+// server-managed sso_login_at field the session cap reads.
+func init() {
+	m.Register(func(app core.App) error {
+		return rauthy.Migrate(app, auth.Rauthy)
+	}, nil)
+}
 `

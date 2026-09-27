@@ -41,8 +41,11 @@ type Config struct {
 	// Empty means derive it from the module path.
 	Slug string
 
-	// AllowPasswords disables pocketkit's OIDC-only opinion. Off by default,
-	// and you should need a good reason to turn it on.
+	// Rauthy configures Rauthy (OIDC) sign-in. Nil leaves auth untouched.
+	Rauthy *RauthyConfig
+
+	// AllowPasswords silences the warning that no Rauthy config was supplied.
+	// Off by default, and you should need a good reason to turn it on.
 	AllowPasswords bool
 
 	// PublicByDefault inverts the auth default so routes are open unless they
