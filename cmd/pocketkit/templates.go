@@ -126,12 +126,20 @@ Add one by creating a file:
 
 ## Types
 
+After the first boot has applied migrations, stop the dev server with Ctrl-C and generate the client types:
+
     pocketkit types
 
-Regenerates 'frontend/src/lib/pocketbase-types.ts' from the local database.
-The client works without generated types; after generating them, optionally
-import 'TypedPocketBase' from './pocketbase-types' in 'src/lib/pb.ts' and cast
-the client to it.
+In 'frontend/src/lib/pb.ts', add the type import and replace the client declaration, keeping the sign-in helper:
+
+    import PocketBase from 'pocketbase';
+    import type { TypedPocketBase } from './pocketbase-types';
+
+    export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
+
+Commit 'frontend/src/lib/pocketbase-types.ts' and the updated 'pb.ts', then restart 'pocketkit dev'.
+After schema changes, apply migrations locally and rerun 'pocketkit types'; commit the regenerated types with the migrations.
+The initial client works before this setup, but collection access is untyped until it is complete.
 `
 
 const tmplSvelteConfig = `import adapter from '@sveltejs/adapter-static';
@@ -181,8 +189,9 @@ export const prerender = false;
 const tmplPBClient = `import PocketBase from 'pocketbase';
 
 // Same-origin in production and, thanks to the Vite proxy, in development too.
-// After running pocketkit types, optionally import TypedPocketBase from
-// './pocketbase-types' and cast this client to it.
+// Complete the typed-client setup in README.md after the first boot:
+// run pocketkit types, import TypedPocketBase from './pocketbase-types',
+// and cast this client to it.
 export const pb = new PocketBase(window.location.origin);
 
 // Auth is OIDC-only. There is deliberately no password sign-in helper here.
