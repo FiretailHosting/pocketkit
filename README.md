@@ -61,7 +61,7 @@ A negative middleware priority explicitly runs before the auth guard and must no
 `PublicByDefault()` disables the automatic guard; protect individual routes with explicit auth middleware.
 
 **3. Auth is OIDC-only, through Rauthy.** Sign-in goes through
-[pocketbase-rauthy](https://github.com/FiretailHosting/pocketbase-rauthy):
+[pocketbase-sso](https://github.com/FiretailHosting/pocketbase-sso):
 
 ```go
 pocketkit.New(pocketkit.WithRauthy(pocketkit.RauthyConfig{
@@ -72,7 +72,7 @@ pocketkit.New(pocketkit.WithRauthy(pocketkit.RauthyConfig{
 
 The scaffold's Rauthy migration disables password and OTP login for its auth collection.
 Rauthy sign-in requires membership of `RequiredGroup` and a verified email; ordinary clients can create accounts only through the OAuth2 flow.
-When integrating an existing app, pair `WithRauthy` with a migration calling `pocketbase-rauthy.Migrate` with the same config.
+When integrating an existing app, pair `WithRauthy` with a migration calling `sso.Migrate` with the same config.
 Without `WithRauthy`, existing authentication settings remain unchanged and pocketkit logs a warning.
 `AllowPasswords()` acknowledges that choice and silences the warning; it does not change login settings.
 

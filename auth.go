@@ -3,13 +3,13 @@ package pocketkit
 import (
 	"fmt"
 
-	rauthy "github.com/FiretailHosting/pocketbase-rauthy"
+	sso "github.com/FiretailHosting/pocketbase-sso"
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// RauthyConfig configures Rauthy sign-in. It is pocketbase-rauthy's own config,
+// RauthyConfig configures Rauthy sign-in. It is pocketbase-sso's config,
 // re-exported so apps need not import the package directly for the common case.
-type RauthyConfig = rauthy.Config
+type RauthyConfig = sso.Config
 
 // WithRauthy enables Rauthy (OIDC) sign-in.
 //
@@ -31,7 +31,7 @@ func WithRauthy(config RauthyConfig) Option {
 // pocketkit does not implement this itself. Disabling password login is the
 // easy half; the half that matters is that PocketBase auth tokens last days, so
 // without a session cap a user removed from the Rauthy group keeps working
-// access until their existing token expires. pocketbase-rauthy caps the session
+// access until their existing token expires. pocketbase-sso caps the session
 // on every request and closes stale realtime connections, which HTTP middleware
 // cannot reach.
 func (a *App) bindAuthPolicy() {
@@ -50,7 +50,7 @@ func (a *App) bindAuthPolicy() {
 		return
 	}
 
-	if err := rauthy.Register(a.PocketBase, *a.cfg.Rauthy); err != nil {
+	if err := sso.Register(a.PocketBase, *a.cfg.Rauthy); err != nil {
 		// A misconfigured auth policy must not start as an open app.
 		panic(fmt.Sprintf("pocketkit: %v", err))
 	}

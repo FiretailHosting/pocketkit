@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/FiretailHosting/go-selfupdate v0.2.1
-	github.com/FiretailHosting/pocketbase-rauthy v0.0.0-20260927034436-878d7c221757
+	github.com/FiretailHosting/pocketbase-sso v0.0.0-20260927220801-5b304e0f0834
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/pocketbase/pocketbase v0.40.4
 	github.com/spf13/cobra v1.10.2
