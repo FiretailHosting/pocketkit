@@ -60,36 +60,37 @@ At the default priority, authentication runs first and explicit `apis.RequireAut
 A negative middleware priority explicitly runs before the auth guard and must not serve protected content.
 `PublicByDefault()` disables the automatic guard; protect individual routes with explicit auth middleware.
 
-**3. Auth is OIDC-only, through Rauthy.** Sign-in goes through
+**3. Auth is OIDC-only.** Sign-in uses
 [pocketbase-sso](https://github.com/FiretailHosting/pocketbase-sso):
 
 ```go
-pocketkit.New(pocketkit.WithRauthy(pocketkit.RauthyConfig{
+pocketkit.New(pocketkit.WithSSO(pocketkit.SSOConfig{
     RequiredGroup: "myapp-users",
     SessionMaxAge: 12 * time.Hour,
 }))
 ```
 
-The scaffold's Rauthy migration disables password and OTP login for its auth collection.
-Rauthy sign-in requires membership of `RequiredGroup` and a verified email; ordinary clients can create accounts only through the OAuth2 flow.
-When integrating an existing app, pair `WithRauthy` with a migration calling `pocketkit.MigrateRauthy` with the same config.
-Without `WithRauthy`, existing authentication settings remain unchanged and pocketkit logs a warning.
+The scaffold's SSO migration disables password and OTP login for its auth collection.
+Sign-in requires membership of `RequiredGroup` and a verified email from the OIDC provider; ordinary clients can create accounts only through the OAuth2 flow.
+When integrating an existing app, pair `WithSSO` with a migration calling `pocketkit.MigrateSSO` with the same config.
+Without `WithSSO`, existing authentication settings remain unchanged and pocketkit logs a warning.
 `AllowPasswords()` acknowledges that choice and silences the warning; it does not change login settings.
 
 `SessionMaxAge` is the part worth understanding. PocketBase auth tokens last
 days, so disabling passwords is not enough on its own: without a session cap, a
-user removed from the Rauthy group keeps working access until their existing
+user removed from the required group keeps working access until their existing
 token expires. The session is therefore capped on every request, not only on
 refresh, and stale realtime connections are closed too, since HTTP middleware
 cannot reach a connection that is already open.
 
-Point the provider at your Rauthy instance in the dashboard under
+Configure the OIDC provider in the dashboard under
 **Collections > users > Options > OAuth2 > OpenID Connect**. Credentials live
 there, never in the repo. `_superusers` keeps its password: the dashboard is
 where OIDC gets configured, so locking it behind OIDC would leave nobody able
 to set it up.
 
-Two things catch people out when wiring this up.
+The provider must supply a `groups` claim and a verified email.
+For Rauthy, two settings catch people out when wiring this up.
 
 **Add `groups` to the client's default scopes in Rauthy.**
 PocketBase's OIDC provider requests `openid`, `email` and `profile`, and that list is not configurable.
