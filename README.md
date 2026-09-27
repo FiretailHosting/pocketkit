@@ -3,7 +3,7 @@
 An opinionated framework for PocketBase.
 
 PocketBase is already excellent. pocketkit does not wrap it, hide it, or
-reinvent it — handlers, middlewares and hooks are stock PocketBase values, and
+reinvent it - handlers, middlewares and hooks are stock PocketBase values, and
 anything you can write against plain PocketBase works here unchanged.
 
 What pocketkit removes is the bookkeeping: you never write a registration line.
@@ -72,14 +72,14 @@ hooks/OnBootstrap/hook.go                       app.OnBootstrap()
 hooks/coins/OnRecordAfterCreateSuccess/hook.go  app.OnRecordAfterCreateSuccess("coins")
 ```
 
-pocketkit never inspects hook signatures — the generated call is plain Go, so
+pocketkit never inspects hook signatures - the generated call is plain Go, so
 the compiler checks them for you and every PocketBase hook works automatically.
 
 **5. Committed migrations are the schema.** Build collections in the dashboard;
 PocketBase writes them out as Go migrations, and you commit those. `pb_data/` is
-disposable — a fresh clone rebuilds the exact same database.
+disposable - a fresh clone rebuilds the exact same database.
 
-**6. One origin, always — and in production, one file.** SvelteKit builds to
+**6. One origin, always - and in production, one file.** SvelteKit builds to
 `frontend/build` as a static SPA and PocketBase serves it at the site root. The
 dev server proxies `/api` and `/_` to PocketBase, so the frontend talks to the
 same origin in development and in production, and auth cookies behave
@@ -96,7 +96,7 @@ app := pocketkit.New(pocketkit.WithFrontendFS(frontend))
 
 An embedded site wins over the directory, so deploying is copying one file,
 while development still picks up whatever the dev server just wrote. The `all:`
-prefix is not optional — SvelteKit emits into `_app`, and a plain `//go:embed`
+prefix is not optional - SvelteKit emits into `_app`, and a plain `//go:embed`
 skips paths beginning with an underscore.
 
 **8. Apps update themselves.** Every pocketkit app gets `update` and `version`
@@ -110,7 +110,7 @@ myapp version
 
 It reads the repository from the app's own module path, downloads the asset
 matching the current OS and architecture, and verifies it against the release's
-`checksums.txt` before replacing anything. Private repositories work — pass
+`checksums.txt` before replacing anything. Private repositories work - pass
 `--token` or set `GITHUB_TOKEN`, and assets are fetched through the GitHub API
 rather than a public download URL.
 
@@ -173,7 +173,7 @@ compiles fine and then panics at startup, so `pocketkit gen` refuses first:
 backups, batch, collections, crons, files, health, logs, realtime, settings, sql
 ```
 
-Only the first segment is reserved — `/api/coins/health` is fine.
+Only the first segment is reserved - `/api/coins/health` is fine.
 
 ## Generated files
 

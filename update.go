@@ -35,11 +35,35 @@ func BuildVersion() string {
 		return Version
 	}
 	if info, ok := debug.ReadBuildInfo(); ok {
-		if v := info.Main.Version; v != "" && v != "(devel)" {
+		// Only a real tagged build counts. A module that has ever been tagged
+		// reports a pseudo-version here for ordinary builds, e.g.
+		// "0.1.1-0.20260927033104-abcdef+dirty", which is neither the running
+		// code's version nor something the updater can compare.
+		if v := info.Main.Version; isReleaseVersion(strings.TrimPrefix(v, "v")) {
 			return v
 		}
 	}
 	return devVersion
+}
+
+// isReleaseVersion reports whether v is a bare X.Y.Z of decimal numbers, the
+// only shape the updater compares and the only shape --version may print.
+func isReleaseVersion(v string) bool {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // bareVersion is BuildVersion without the leading "v".
@@ -168,9 +192,9 @@ func (a *App) runUpdate(ctx context.Context, checkOnly bool, token string) error
 	}
 
 	if runtime.GOOS != "linux" {
-		return fmt.Errorf("self-update targets Linux only; this is %s/%s. "+
-			"Releases still publish a %s asset you can download by hand",
-			runtime.GOOS, runtime.GOARCH, runtime.GOOS)
+		return fmt.Errorf("self-update targets Linux amd64/arm64; this is %s/%s. "+
+			"Releases publish Linux binaries only, so build from source here",
+			runtime.GOOS, runtime.GOARCH)
 	}
 
 	installed, err := updater.Install(ctx, mustExecutable())
