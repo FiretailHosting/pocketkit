@@ -62,7 +62,7 @@ func cmdNew(args []string) error {
 	}
 
 	fmt.Printf("\nNext:\n  cd %s\n  go mod tidy\n  pocketkit dev\n", dir)
-	fmt.Println("\nAfter the first boot applies migrations, stop the dev server and run:\n  pocketkit types\nThen complete the typed-client setup in README.md.")
+	fmt.Println("\nAfter the first boot applies migrations, run this in a second terminal:\n  pocketkit types\nThen complete the typed-client setup in README.md.")
 	return nil
 }
 
