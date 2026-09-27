@@ -320,7 +320,7 @@ var Rauthy = pocketkit.RauthyConfig{
 const tmplAuthMigration = `package migrations
 
 import (
-	sso "github.com/FiretailHosting/pocketbase-sso"
+	"github.com/FiretailHosting/pocketkit"
 	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
 
@@ -332,7 +332,7 @@ import (
 // server-managed sso_login_at field the session cap reads.
 func init() {
 	m.Register(func(app core.App) error {
-		return sso.Migrate(app, auth.Rauthy)
+		return pocketkit.MigrateRauthy(app, auth.Rauthy)
 	}, nil)
 }
 `

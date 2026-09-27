@@ -72,7 +72,7 @@ pocketkit.New(pocketkit.WithRauthy(pocketkit.RauthyConfig{
 
 The scaffold's Rauthy migration disables password and OTP login for its auth collection.
 Rauthy sign-in requires membership of `RequiredGroup` and a verified email; ordinary clients can create accounts only through the OAuth2 flow.
-When integrating an existing app, pair `WithRauthy` with a migration calling `sso.Migrate` with the same config.
+When integrating an existing app, pair `WithRauthy` with a migration calling `pocketkit.MigrateRauthy` with the same config.
 Without `WithRauthy`, existing authentication settings remain unchanged and pocketkit logs a warning.
 `AllowPasswords()` acknowledges that choice and silences the warning; it does not change login settings.
 
