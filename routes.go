@@ -15,14 +15,16 @@ type RouteDef struct {
 	Method string
 	Path   string
 
-	// Handler is the route's Handle func.
+	// Handler is the route's method-named func, e.g. GET.
 	Handler func(e *core.RequestEvent) error
 
-	// Middlewares are the route's optional exported Middlewares slice.
+	// Middlewares are the route's optional method-named slice, e.g. GETMiddlewares.
+	// At the default priority they run after pocketkit's auth guard. A negative
+	// priority explicitly runs before it and must not serve protected content.
 	Middlewares []*hook.Handler[*core.RequestEvent]
 
 	// Public reports whether the route opted out of the default auth
-	// requirement by declaring `var Public = true`.
+	// requirement with a //pocketkit:public directive on the handler.
 	Public bool
 }
 

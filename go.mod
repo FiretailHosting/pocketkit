@@ -4,13 +4,13 @@ go 1.27.1
 
 require (
 	github.com/FiretailHosting/go-selfupdate v0.2.1
+	github.com/FiretailHosting/pocketbase-rauthy v0.0.0-20260927034436-878d7c221757
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/pocketbase/pocketbase v0.40.4
 	github.com/spf13/cobra v1.10.2
 )
 
 require (
-	github.com/FiretailHosting/pocketbase-rauthy v0.0.0-20260927034436-878d7c221757 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/domodwyer/mailyak/v3 v3.6.2 // indirect

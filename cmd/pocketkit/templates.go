@@ -110,8 +110,9 @@ SvelteKit dev server on :5173 with '/api' proxied to PocketBase.
 
 ## Sign-in
 
-Auth is OIDC-only -- password login is disabled and cannot be re-enabled from
-the dashboard. Point the OIDC provider at your Rauthy instance in the superuser
+The scaffold's migration disables password and OTP login for the users collection.
+The configured Rauthy hooks enforce group membership and session age.
+Point the OIDC provider at your Rauthy instance in the superuser
 dashboard under **Collections > users > Options > OAuth2 > OpenID Connect**.
 
 ## Routes
@@ -128,6 +129,9 @@ Add one by creating a file:
     pocketkit types
 
 Regenerates 'frontend/src/lib/pocketbase-types.ts' from the local database.
+The client works without generated types; after generating them, optionally
+import 'TypedPocketBase' from './pocketbase-types' in 'src/lib/pb.ts' and cast
+the client to it.
 `
 
 const tmplSvelteConfig = `import adapter from '@sveltejs/adapter-static';
@@ -175,10 +179,11 @@ export const prerender = false;
 `
 
 const tmplPBClient = `import PocketBase from 'pocketbase';
-import type { TypedPocketBase } from './pocketbase-types';
 
 // Same-origin in production and, thanks to the Vite proxy, in development too.
-export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
+// After running pocketkit types, optionally import TypedPocketBase from
+// './pocketbase-types' and cast this client to it.
+export const pb = new PocketBase(window.location.origin);
 
 // Auth is OIDC-only. There is deliberately no password sign-in helper here.
 export function signIn(collection = 'users') {

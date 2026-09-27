@@ -80,6 +80,11 @@ func runBackend(ctx context.Context, root, addr string) {
 
 	go func() {
 		var timer *time.Timer
+		defer func() {
+			if timer != nil {
+				timer.Stop()
+			}
+		}()
 		for {
 			select {
 			case <-ctx.Done():
@@ -111,7 +116,7 @@ func runBackend(ctx context.Context, root, addr string) {
 		}
 	}()
 
-	var current *exec.Cmd
+	var current *devProcess
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,6 +124,7 @@ func runBackend(ctx context.Context, root, addr string) {
 			return
 		case <-restart:
 			stopProcess(current)
+			current = nil
 
 			res, changed, err := generate(root)
 			if err != nil {
@@ -134,30 +140,61 @@ func runBackend(ctx context.Context, root, addr string) {
 			cmd.Dir = root
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			if err := cmd.Start(); err != nil {
+			process, err := startProcess(cmd)
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "pocketkit: %v\n", err)
 				continue
 			}
-			current = cmd
+			current = process
 		}
 	}
 }
 
-// stopProcess kills the app and the whole process group `go run` created, so the
-// compiled child does not survive and hold the port.
-func stopProcess(cmd *exec.Cmd) {
-	if cmd == nil || cmd.Process == nil {
+const shutdownTimeout = 3 * time.Second
+
+// devProcess owns the one Wait call for a command. Closing done publishes err.
+type devProcess struct {
+	cmd  *exec.Cmd
+	done chan struct{}
+	err  error
+}
+
+func startProcess(cmd *exec.Cmd) (*devProcess, error) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.WaitDelay = shutdownTimeout
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	p := &devProcess{cmd: cmd, done: make(chan struct{})}
+	go func() {
+		p.err = cmd.Wait()
+		// A launcher (go run, npm, bun) can exit before its children. Clean
+		// them up even when the launcher exited naturally or failed to build.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		close(p.done)
+	}()
+	return p, nil
+}
+
+// stopProcess gives the command time to exit, then forces the whole group down.
+// It is safe to call again after the command has already been reaped.
+func stopProcess(p *devProcess) {
+	if p == nil {
 		return
 	}
-	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-
-	done := make(chan struct{})
-	go func() { _, _ = cmd.Process.Wait(); close(done) }()
 	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	case <-p.done:
+		return
+	default:
+	}
+	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+	select {
+	case <-p.done:
+	case <-timer.C:
+		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+		<-p.done
 	}
 }
 
@@ -193,13 +230,21 @@ func frontendDevCommand(root string) ([]string, bool) {
 }
 
 func runFrontend(ctx context.Context, root string, argv []string) {
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = filepath.Join(root, "frontend")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
-	if err := cmd.Run(); err != nil && ctx.Err() == nil {
+	p, err := startProcess(cmd)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "pocketkit: frontend: %v\n", err)
+		return
+	}
+	select {
+	case <-ctx.Done():
+		stopProcess(p)
+	case <-p.done:
+		if p.err != nil {
+			fmt.Fprintf(os.Stderr, "pocketkit: frontend: %v\n", p.err)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/FiretailHosting/pocketkit/internal/gen"
 	"github.com/FiretailHosting/pocketkit/internal/scan"
@@ -53,15 +54,12 @@ func mainPackageName(root string) (string, error) {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || filepath.Ext(name) != ".go" {
-			continue
-		}
-		if name == GenFile {
+		if e.IsDir() || filepath.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") || name == GenFile {
 			continue
 		}
 		pkg, err := packageClause(filepath.Join(root, name))
 		if err != nil {
-			continue
+			return "", fmt.Errorf("reading package from %s: %w", name, err)
 		}
 		return pkg, nil
 	}

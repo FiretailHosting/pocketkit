@@ -4,9 +4,9 @@
 //
 //   - Routes and hooks are discovered from the filesystem. You never write a
 //     registration line; `pocketkit gen` reads api/ and hooks/ and wires them up.
-//   - Auth is OIDC-only. Password login is disabled on every auth collection and
-//     cannot be re-enabled from the dashboard.
-//   - Routes require auth unless they say otherwise with `var Public = true`.
+//   - WithRauthy enables OIDC sign-in for the configured auth collection.
+//     Without it, existing authentication settings remain unchanged.
+//   - Routes require auth unless the handler declares //pocketkit:public.
 //
 // Handlers, middlewares and hooks are plain PocketBase values. Anything you can
 // write against stock PocketBase works here unchanged.
@@ -49,8 +49,8 @@ type Config struct {
 	// Off by default, and you should need a good reason to turn it on.
 	AllowPasswords bool
 
-	// PublicByDefault inverts the auth default so routes are open unless they
-	// declare otherwise. Off by default.
+	// PublicByDefault disables automatic route authentication. Protect individual
+	// routes with explicit auth middleware. Off by default.
 	PublicByDefault bool
 
 	// AuthCollections optionally restricts which collections satisfy the
@@ -95,12 +95,14 @@ func WithUpdates(slug string) Option {
 	return func(c *Config) { c.Slug = slug }
 }
 
-// AllowPasswords re-enables password login. See Config.AllowPasswords.
+// AllowPasswords acknowledges password login and suppresses the warning when
+// no Rauthy policy is configured. It does not change authentication settings.
 func AllowPasswords() Option {
 	return func(c *Config) { c.AllowPasswords = true }
 }
 
-// PublicByDefault inverts the default auth requirement for routes.
+// PublicByDefault disables automatic route authentication. Protect individual
+// routes with explicit auth middleware.
 func PublicByDefault() Option {
 	return func(c *Config) { c.PublicByDefault = true }
 }
@@ -147,12 +149,14 @@ func (a *App) bindRoutes() {
 		for _, r := range Routes() {
 			route := se.Router.Route(r.Method, r.Path, r.Handler)
 
-			if len(r.Middlewares) > 0 {
-				route.Bind(r.Middlewares...)
-			}
 			if a.requiresAuth(r) {
-				route.Bind(apis.RequireAuth(a.cfg.AuthCollections...))
+				auth := apis.RequireAuth(a.cfg.AuthCollections...)
+				// Keep explicit RequireAuth middleware independent of this guard.
+				// PocketBase replaces handlers sharing an ID.
+				auth.Id = "pocketkitRequireAuth"
+				route.Bind(auth)
 			}
+			route.Bind(r.Middlewares...)
 		}
 
 		a.serveFrontend(se)

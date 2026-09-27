@@ -9,16 +9,8 @@ import (
 
 // diagnoseAccess explains why no release was found.
 //
-// It exists because go-selfupdate cannot tell us. Its GitHub source treats an
-// HTTP 404 from the releases endpoint as "no releases" and returns no error
-// (github_source.go, ListReleases). GitHub answers 404 rather than 403 for a
-// private repository reached without credentials, deliberately, so as not to
-// reveal that the repository exists. The two collapse into one silent result:
-// a missing or expired token looks exactly like a repository that has never
-// published a release.
-//
-// So when the updater finds nothing, pocketkit asks GitHub directly and
-// reports what actually came back.
+// GitHub returns 404 for both missing releases and inaccessible private repos.
+// Probe repository access to add context without replacing the original error.
 func diagnoseAccess(ctx context.Context, slug, token string) string {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -41,10 +33,8 @@ func diagnoseAccess(ctx context.Context, slug, token string) string {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		// The repository is readable, so the release really has no asset for
-		// this platform.
-		return "\n\nThe repository is reachable, so the release exists but " +
-			"publishes no asset ending in <os>_<arch> for this platform."
+		return "\n\nThe repository is reachable with these credentials. " +
+			"See the original error above for the failure."
 
 	case http.StatusNotFound:
 		if token == "" {
