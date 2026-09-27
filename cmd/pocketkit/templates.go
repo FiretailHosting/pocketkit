@@ -37,7 +37,7 @@ var frontend embed.FS
 func main() {
 	app := pocketkit.New(
 		pocketkit.WithFrontendFS(frontend),
-		pocketkit.WithRauthy(auth.Rauthy),
+		pocketkit.WithSSO(auth.SSO),
 	)
 
 	if err := app.Start(); err != nil {
@@ -111,9 +111,9 @@ SvelteKit dev server on :5173 with '/api' proxied to PocketBase.
 ## Sign-in
 
 The scaffold's migration disables password and OTP login for the users collection.
-The configured Rauthy hooks enforce group membership and session age.
-Point the OIDC provider at your Rauthy instance in the superuser
-dashboard under **Collections > users > Options > OAuth2 > OpenID Connect**.
+The configured SSO hooks enforce group membership and session age.
+Configure an OIDC provider that supplies a verified email and groups claim in
+the superuser dashboard under **Collections > users > Options > OAuth2 > OpenID Connect**.
 
 ## Routes
 
@@ -291,7 +291,7 @@ jobs:
           fi
 `
 
-const tmplAuthConfig = `// Package auth holds this app's Rauthy sign-in settings.
+const tmplAuthConfig = `// Package auth holds this app's SSO sign-in settings.
 //
 // They live here because both main.go and the migration that applies them to
 // the users collection need the same values.
@@ -303,14 +303,14 @@ import (
 	"github.com/FiretailHosting/pocketkit"
 )
 
-// Rauthy is this app's sign-in policy.
+// SSO is this app's sign-in policy.
 //
-// RequiredGroup must match a real group in your Rauthy instance; until it does,
+// RequiredGroup must match a real group from your OIDC provider; until it does,
 // nobody can sign in, which is the correct failure for an OIDC-only app.
-var Rauthy = pocketkit.RauthyConfig{
+var SSO = pocketkit.SSOConfig{
 	RequiredGroup: "%s-users",
 
-	// How long a session survives after the last Rauthy sign-in. This is the
+	// How long a session survives after the last OIDC sign-in. This is the
 	// window in which someone removed from the group still has access, so keep
 	// it short rather than matching PocketBase's multi-day token lifetime.
 	SessionMaxAge: 12 * time.Hour,
@@ -327,12 +327,12 @@ import (
 	"%s/internal/auth"
 )
 
-// Applies the Rauthy sign-in policy to the users collection: password and OTP
+// Applies the SSO sign-in policy to the users collection: password and OTP
 // off, OAuth2 on, account creation restricted to the OAuth2 flow, and the
 // server-managed sso_login_at field the session cap reads.
 func init() {
 	m.Register(func(app core.App) error {
-		return pocketkit.MigrateRauthy(app, auth.Rauthy)
+		return pocketkit.MigrateSSO(app, auth.SSO)
 	}, nil)
 }
 `

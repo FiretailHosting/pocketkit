@@ -24,16 +24,16 @@ func cmdNew(args []string) error {
 	name := filepath.Base(dir)
 
 	files := map[string]string{
-		"go.mod":                          fmt.Sprintf(tmplGoMod, modulePath),
-		"main.go":                         fmt.Sprintf(tmplMain, modulePath),
-		"api/ping/GET.go":                 tmplPing,
-		"migrations/doc.go":               tmplMigrationsDoc,
-		"internal/auth/auth.go":           fmt.Sprintf(tmplAuthConfig, name),
-		"migrations/1700000000_rauthy.go": fmt.Sprintf(tmplAuthMigration, modulePath),
-		".gitignore":                      tmplGitignore,
-		"README.md":                       fmt.Sprintf(tmplReadme, name),
-		"frontend/build/.gitkeep":         tmplGitkeep,
-		".github/workflows/release.yml":   tmplReleaseWorkflow,
+		"go.mod":                        fmt.Sprintf(tmplGoMod, modulePath),
+		"main.go":                       fmt.Sprintf(tmplMain, modulePath),
+		"api/ping/GET.go":               tmplPing,
+		"migrations/doc.go":             tmplMigrationsDoc,
+		"internal/auth/auth.go":         fmt.Sprintf(tmplAuthConfig, name),
+		"migrations/1700000000_sso.go":  fmt.Sprintf(tmplAuthMigration, modulePath),
+		".gitignore":                    tmplGitignore,
+		"README.md":                     fmt.Sprintf(tmplReadme, name),
+		"frontend/build/.gitkeep":       tmplGitkeep,
+		".github/workflows/release.yml": tmplReleaseWorkflow,
 	}
 
 	for rel, content := range files {

@@ -4,7 +4,7 @@
 //
 //   - Routes and hooks are discovered from the filesystem. You never write a
 //     registration line; `pocketkit gen` reads api/ and hooks/ and wires them up.
-//   - WithRauthy enables OIDC sign-in for the configured auth collection.
+//   - WithSSO enables OIDC sign-in for the configured auth collection.
 //     Without it, existing authentication settings remain unchanged.
 //   - Routes require auth unless the handler declares //pocketkit:public.
 //
@@ -42,10 +42,10 @@ type Config struct {
 	// Empty means derive it from the module path.
 	Slug string
 
-	// Rauthy configures Rauthy (OIDC) sign-in. Nil leaves auth untouched.
-	Rauthy *RauthyConfig
+	// SSO configures OIDC sign-in. Nil leaves auth untouched.
+	SSO *SSOConfig
 
-	// AllowPasswords silences the warning that no Rauthy config was supplied.
+	// AllowPasswords silences the warning that no SSO config was supplied.
 	// Off by default, and you should need a good reason to turn it on.
 	AllowPasswords bool
 
@@ -96,7 +96,7 @@ func WithUpdates(slug string) Option {
 }
 
 // AllowPasswords acknowledges password login and suppresses the warning when
-// no Rauthy policy is configured. It does not change authentication settings.
+// no SSO policy is configured. It does not change authentication settings.
 func AllowPasswords() Option {
 	return func(c *Config) { c.AllowPasswords = true }
 }
