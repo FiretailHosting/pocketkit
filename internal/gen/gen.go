@@ -64,9 +64,9 @@ func File(res *scan.Result, pkgName string) ([]byte, error) {
 			fmt.Fprintf(&b, "\t\tpocketkit.RouteDef{\n")
 			fmt.Fprintf(&b, "\t\t\tMethod:  %s,\n", strconv.Quote(r.Method))
 			fmt.Fprintf(&b, "\t\t\tPath:    %s,\n", strconv.Quote(r.Path))
-			fmt.Fprintf(&b, "\t\t\tHandler: %s.Handle,\n", a)
-			if r.HasMiddlewares {
-				fmt.Fprintf(&b, "\t\t\tMiddlewares: %s.Middlewares,\n", a)
+			fmt.Fprintf(&b, "\t\t\tHandler: %s.%s,\n", a, r.Handler)
+			if r.Middlewares != "" {
+				fmt.Fprintf(&b, "\t\t\tMiddlewares: %s.%s,\n", a, r.Middlewares)
 			}
 			if r.Public {
 				fmt.Fprintf(&b, "\t\t\tPublic: true,\n")

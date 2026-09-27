@@ -29,7 +29,7 @@ func cmdRoutes(args []string) error {
 			if r.Public {
 				auth = "public"
 			}
-			if r.HasMiddlewares {
+			if r.Middlewares != "" {
 				auth += " +mw"
 			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Method, r.Path, auth, r.File)

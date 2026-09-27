@@ -57,9 +57,12 @@ func TestAppDiscoversRoutesAndHooks(t *testing.T) {
 		}
 	}
 
-	write("api/coins/GET.go", "package coins\nfunc Handle() error { return nil }\n")
-	write("api/coins/POST.go", "package coins\nvar Middlewares = []int{}\nfunc Handle() error { return nil }\n")
-	write("api/coins/_id/GET.go", "package coin\nvar Public = true\nfunc Handle() error { return nil }\n")
+	// GET and POST share one Go package, so each handler is named after its
+	// method. This is exactly the collision that `func Handle` in both files
+	// would cause.
+	write("api/coins/GET.go", "package coins\nfunc GET() error { return nil }\n")
+	write("api/coins/POST.go", "package coins\nvar POSTMiddlewares = []int{}\nfunc POST() error { return nil }\n")
+	write("api/coins/_id/GET.go", "package coin\n//pocketkit:public\nfunc GET() error { return nil }\n")
 	write("api/coins/notes.go", "package coins\n// not a route file\n")
 	write("hooks/coins/OnRecordAfterCreateSuccess/h.go", "package h\nfunc Handle() error { return nil }\n")
 
@@ -81,11 +84,14 @@ func TestAppDiscoversRoutesAndHooks(t *testing.T) {
 	if get.ImportPath != "example.com/m/api/coins" || get.Package != "coins" {
 		t.Errorf("unexpected import/package: %+v", get)
 	}
-	if get.Public || get.HasMiddlewares {
+	if get.Public || get.Middlewares != "" {
 		t.Errorf("GET /api/coins should be neither public nor have middlewares: %+v", get)
 	}
-	if !byKey["POST /api/coins"].HasMiddlewares {
-		t.Error("POST /api/coins should report middlewares")
+	if got := byKey["POST /api/coins"].Middlewares; got != "POSTMiddlewares" {
+		t.Errorf("POST /api/coins middlewares = %q, want POSTMiddlewares", got)
+	}
+	if got := get.Handler; got != "GET" {
+		t.Errorf("handler = %q, want GET", got)
 	}
 	if !byKey["GET /api/coins/{id}"].Public {
 		t.Error("GET /api/coins/{id} should be public")
@@ -104,25 +110,54 @@ func TestMissingHandleIsAnError(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "api", "broken", "GET.go")
 	os.MkdirAll(filepath.Dir(p), 0o755)
-	os.WriteFile(p, []byte("package broken\n"), 0o644)
+	os.WriteFile(p, []byte("package broken\nfunc Handle() error { return nil }\n"), 0o644)
 
+	// `func Handle` is no longer the route convention: GET.go must declare GET.
 	_, err := App(root, "example.com/m")
-	if err == nil || !strings.Contains(err.Error(), "Handle") {
-		t.Fatalf("want a Handle error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "func GET") {
+		t.Fatalf("want a missing-GET error, got %v", err)
 	}
 }
 
-func TestPublicFalseDoesNotOptOut(t *testing.T) {
+func TestPublicDirectiveMustBeExact(t *testing.T) {
+	// A near-miss directive must fail safe: the route stays auth-required.
+	for _, comment := range []string{
+		"// pocketkit:public", // space after slashes: an ordinary comment
+		"//pocketkit:Public",  // wrong case
+		"//pocketkit:pubic",   // typo
+	} {
+		root := t.TempDir()
+		p := filepath.Join(root, "api", "x", "GET.go")
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte("package x\n"+comment+"\nfunc GET() error { return nil }\n"), 0o644)
+
+		res, err := App(root, "example.com/m")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Routes[0].Public {
+			t.Errorf("%q must not open the route", comment)
+		}
+	}
+}
+
+func TestPublicDirectiveOnlyAppliesToItsOwnMethod(t *testing.T) {
 	root := t.TempDir()
-	p := filepath.Join(root, "api", "x", "GET.go")
-	os.MkdirAll(filepath.Dir(p), 0o755)
-	os.WriteFile(p, []byte("package x\nvar Public = false\nfunc Handle() error { return nil }\n"), 0o644)
+	dir := filepath.Join(root, "api", "x")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "GET.go"),
+		[]byte("package x\n//pocketkit:public\nfunc GET() error { return nil }\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "DELETE.go"),
+		[]byte("package x\nfunc DELETE() error { return nil }\n"), 0o644)
 
 	res, err := App(root, "example.com/m")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Routes[0].Public {
-		t.Error("var Public = false must not opt out of auth")
+	for _, r := range res.Routes {
+		want := r.Method == "GET"
+		if r.Public != want {
+			t.Errorf("%s public = %v, want %v", r.Method, r.Public, want)
+		}
 	}
 }

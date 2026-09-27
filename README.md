@@ -14,12 +14,15 @@ package coin
 
 import "github.com/pocketbase/pocketbase/core"
 
-func Handle(e *core.RequestEvent) error {
+func GET(e *core.RequestEvent) error {
 	return e.JSON(200, e.Request.PathValue("id"))
 }
 ```
 
 That file is the whole thing. No `OnServe`, no `se.Router.GET`, no import to add.
+
+The handler is named after its method. `GET.go` and `POST.go` in one directory
+are one Go package, so a shared name like `Handle` would not compile.
 
 ## The opinions
 
@@ -40,8 +43,17 @@ wildcard. Go forbids `{`, `[`, `-` and `$` in import paths, so `_id` is the only
 spelling of this that Go itself will actually compile.
 
 **2. Routes require auth. Say so to opt out.** Every route needs a signed-in
-user unless its package declares `var Public = true`. Forgetting to protect a
-route is a security bug; forgetting to open one is a 401 you notice immediately.
+user unless its handler carries a `//pocketkit:public` directive:
+
+```go
+//pocketkit:public
+func GET(e *core.RequestEvent) error { ... }
+```
+
+Forgetting to protect a route is a security bug; forgetting to open one is a 401
+you notice immediately. A mistyped directive fails the same safe way. Per-route
+middleware goes in a `GETMiddlewares` slice, named after its method for the same
+reason the handler is.
 
 **3. Auth is OIDC-only.** Password login is disabled on every auth collection at
 boot and re-disabled on every save, so it cannot be clicked back on in the

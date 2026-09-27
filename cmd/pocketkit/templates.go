@@ -29,7 +29,9 @@ func main() {
 const tmplPing = `// Package ping answers GET /api/ping.
 //
 // The directory decides the URL and the file name decides the method, so this
-// file needs no registration anywhere. Handle's signature is stock PocketBase.
+// file needs no registration anywhere. The handler is named after its method,
+// because every method file in a directory shares one Go package. Its
+// signature is stock PocketBase.
 package ping
 
 import (
@@ -38,11 +40,11 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// Public opts this route out of pocketkit's default auth requirement.
-// Remove this line and the route requires a signed-in user.
-var Public = true
-
-func Handle(e *core.RequestEvent) error {
+// The directive below opts this route out of pocketkit's default auth
+// requirement. Remove it and the route requires a signed-in user.
+//
+//pocketkit:public
+func GET(e *core.RequestEvent) error {
 	return e.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 `

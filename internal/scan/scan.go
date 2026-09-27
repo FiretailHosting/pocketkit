@@ -36,8 +36,17 @@ type Route struct {
 	Package    string // package clause as written in the file
 	File       string // path to the file on disk, for error messages
 
-	HasMiddlewares bool // package declares `var Middlewares`
-	Public         bool // package declares `var Public = true`
+	// Handler is the exported func implementing the route. It is named after
+	// the method -- GET.go declares func GET -- because every method file in a
+	// directory shares one Go package and so needs a distinct identifier.
+	Handler string
+
+	// Middlewares is the exported middleware slice, e.g. GETMiddlewares.
+	// Empty when the package declares none.
+	Middlewares string
+
+	// Public reports whether the handler carries a //pocketkit:public directive.
+	Public bool
 }
 
 // Hook is a discovered hook file.
@@ -105,12 +114,12 @@ func scanAPI(apiDir, modulePath, root string) ([]Route, error) {
 			return err
 		}
 
-		info, err := inspect(p)
+		info, err := inspect(p, method)
 		if err != nil {
 			return err
 		}
-		if !info.hasHandle {
-			return fmt.Errorf("%s: declares no `func Handle(e *core.RequestEvent) error`", rel(root, p))
+		if !info.hasHandler {
+			return fmt.Errorf("%s: declares no `func %s(e *core.RequestEvent) error`", rel(root, p), method)
 		}
 
 		imp, err := importPath(modulePath, root, pkgDir)
@@ -118,15 +127,19 @@ func scanAPI(apiDir, modulePath, root string) ([]Route, error) {
 			return err
 		}
 
-		routes = append(routes, Route{
-			Method:         method,
-			Path:           urlPath,
-			ImportPath:     imp,
-			Package:        info.pkg,
-			File:           p,
-			HasMiddlewares: info.hasMiddlewares,
-			Public:         info.public,
-		})
+		route := Route{
+			Method:     method,
+			Path:       urlPath,
+			ImportPath: imp,
+			Package:    info.pkg,
+			File:       p,
+			Handler:    method,
+			Public:     info.public,
+		}
+		if info.hasMiddlewares {
+			route.Middlewares = method + middlewaresSuffix
+		}
+		routes = append(routes, route)
 		return nil
 	})
 	if err != nil {
@@ -165,14 +178,14 @@ func scanHooks(hooksDir, modulePath, root string) ([]Hook, error) {
 			return nil
 		}
 
-		info, file, err := inspectDir(p)
+		info, file, err := inspectDir(p, "Handle")
 		if err != nil {
 			return err
 		}
 		if info == nil {
 			return nil // no .go files yet
 		}
-		if !info.hasHandle {
+		if !info.hasHandler {
 			return fmt.Errorf("%s: declares no `func Handle(...) error`", rel(root, file))
 		}
 
@@ -242,28 +255,39 @@ func urlFromDir(apiDir, pkgDir string) (string, error) {
 	return out, nil
 }
 
+// middlewaresSuffix is appended to a method name to form the middleware slice
+// identifier, e.g. GET + Middlewares.
+const middlewaresSuffix = "Middlewares"
+
+// publicDirective marks a handler as not requiring auth. It is a directive
+// comment in the style of //go:embed, so it attaches to the handler it
+// describes and cannot collide with another method in the same package.
+const publicDirective = "//pocketkit:public"
+
 type fileInfo struct {
 	pkg            string
-	hasHandle      bool
+	hasHandler     bool
 	hasMiddlewares bool
 	public         bool
 }
 
 // inspect parses one file and reports the declarations pocketkit cares about.
-func inspect(p string) (*fileInfo, error) {
+// wantFunc is the exported func the file must declare: the method name for a
+// route file, "Handle" for a hook.
+func inspect(p, wantFunc string) (*fileInfo, error) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution)
+	f, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution|parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
 	info := &fileInfo{pkg: f.Name.Name}
-	readDecls(f, info)
+	readDecls(f, info, wantFunc)
 	return info, nil
 }
 
 // inspectDir parses every .go file in a directory, merging what it finds. A hook
 // or route package may split Handle and Middlewares across files.
-func inspectDir(dir string) (*fileInfo, string, error) {
+func inspectDir(dir, wantFunc string) (*fileInfo, string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, "", err
@@ -275,7 +299,7 @@ func inspectDir(dir string) (*fileInfo, string, error) {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
-		info, err := inspect(p)
+		info, err := inspect(p, wantFunc)
 		if err != nil {
 			return nil, p, err
 		}
@@ -284,19 +308,23 @@ func inspectDir(dir string) (*fileInfo, string, error) {
 			firstFile = p
 			continue
 		}
-		merged.hasHandle = merged.hasHandle || info.hasHandle
+		merged.hasHandler = merged.hasHandler || info.hasHandler
 		merged.hasMiddlewares = merged.hasMiddlewares || info.hasMiddlewares
 		merged.public = merged.public || info.public
 	}
 	return merged, firstFile, nil
 }
 
-func readDecls(f *ast.File, info *fileInfo) {
+func readDecls(f *ast.File, info *fileInfo, wantFunc string) {
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
-			if d.Recv == nil && d.Name.Name == "Handle" {
-				info.hasHandle = true
+			if d.Recv != nil || d.Name.Name != wantFunc {
+				continue
+			}
+			info.hasHandler = true
+			if hasPublicDirective(d.Doc) {
+				info.public = true
 			}
 		case *ast.GenDecl:
 			if d.Tok != token.VAR {
@@ -307,22 +335,27 @@ func readDecls(f *ast.File, info *fileInfo) {
 				if !ok {
 					continue
 				}
-				for i, name := range vs.Names {
-					switch name.Name {
-					case "Middlewares":
+				for _, name := range vs.Names {
+					if name.Name == wantFunc+middlewaresSuffix {
 						info.hasMiddlewares = true
-					case "Public":
-						// Only `var Public = true` opts out; `= false` is a no-op.
-						if i < len(vs.Values) {
-							if id, ok := vs.Values[i].(*ast.Ident); ok && id.Name == "true" {
-								info.public = true
-							}
-						}
 					}
 				}
 			}
 		}
 	}
+}
+
+// hasPublicDirective reports whether a doc comment carries //pocketkit:public.
+func hasPublicDirective(doc *ast.CommentGroup) bool {
+	if doc == nil {
+		return false
+	}
+	for _, c := range doc.List {
+		if strings.TrimSpace(c.Text) == publicDirective {
+			return true
+		}
+	}
+	return false
 }
 
 // isHookName reports whether a directory name looks like a PocketBase hook
