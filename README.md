@@ -159,15 +159,7 @@ PocketBase's SQLite driver is pure Go, so `CGO` stays off and no per-platform ru
 [pocketbase-typegen](https://github.com/patmood/pocketbase-typegen) against the
 local database and writes `frontend/src/lib/pocketbase-types.ts`.
 
-The scaffold starts with a standard PocketBase client, so it works before types are generated.
-After running `pocketkit dev` once to apply migrations and `pocketkit types`, opt into typed collection access in `frontend/src/lib/pb.ts`:
-
-```ts
-import PocketBase from 'pocketbase';
-import type { TypedPocketBase } from './pocketbase-types';
-
-export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
-```
+Complete the typed-client setup after the first boot using the [start an app](#start-an-app) steps below.
 
 ## Install
 
@@ -186,6 +178,25 @@ pocketkit dev
 
 This scaffolds the Go app and a SvelteKit frontend wired to the opinions above,
 then runs PocketBase on `:8090` and the frontend dev server on `:5173`.
+
+Once PocketBase has started and applied migrations, stop the dev server with Ctrl-C and generate types:
+
+```
+pocketkit types
+```
+
+In `frontend/src/lib/pb.ts`, add the type import and replace the client declaration, keeping the sign-in helper:
+
+```ts
+import PocketBase from 'pocketbase';
+import type { TypedPocketBase } from './pocketbase-types';
+
+export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
+```
+
+Commit `frontend/src/lib/pocketbase-types.ts` and the updated `pb.ts`, then restart `pocketkit dev`.
+After schema changes, apply migrations locally and rerun `pocketkit types`; commit the regenerated types with the migrations.
+The initial client works before this setup, but collection access is untyped until it is complete.
 
 ## Commands
 
