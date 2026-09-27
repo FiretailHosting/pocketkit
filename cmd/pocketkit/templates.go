@@ -126,7 +126,8 @@ Add one by creating a file:
 
 ## Types
 
-After the first boot has applied migrations, stop the dev server with Ctrl-C and generate the client types:
+After the first boot has applied migrations, generate the client types in a second terminal.
+The dev server can keep running, since type generation only reads the database.
 
     pocketkit types
 
@@ -137,7 +138,7 @@ In 'frontend/src/lib/pb.ts', add the type import and replace the client declarat
 
     export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
 
-Commit 'frontend/src/lib/pocketbase-types.ts' and the updated 'pb.ts', then restart 'pocketkit dev'.
+Commit 'frontend/src/lib/pocketbase-types.ts' and the updated 'pb.ts'.
 After schema changes, apply migrations locally and rerun 'pocketkit types'; commit the regenerated types with the migrations.
 The initial client works before this setup, but collection access is untyped until it is complete.
 `
