@@ -90,12 +90,11 @@ where OIDC gets configured, so locking it behind OIDC would leave nobody able
 to set it up.
 
 The provider must supply a `groups` claim and a verified email.
-For Rauthy, two settings catch people out when wiring this up.
+Two settings catch people out when wiring this up.
 
-**Add `groups` to the client's default scopes in Rauthy.**
+**Ensure the provider sends `groups` with the identity data.**
 PocketBase's OIDC provider requests `openid`, `email` and `profile`, and that list is not configurable.
-It never asks for `groups`, so Rauthy sends the claim only if the client emits it unasked.
-This is a per-client setting, separate from the global scope list, which is already marked default and does not affect it.
+It never asks for `groups`, so configure the provider to include the claim without an explicit request for that scope.
 Miss it and every sign-in fails with "Your account is not in the ... group", which points at membership rather than at the absent claim.
 
 **The redirect URI follows the origin you open, not the server's address.**
