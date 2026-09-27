@@ -69,6 +69,10 @@ func (a *App) bindUpdateCommand() {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update this binary to the latest GitHub release",
+		// An update failure is an ordinary runtime error -- usually a missing
+		// token or no matching asset -- not a misuse of the command, so the
+		// message should not be buried under a usage dump.
+		SilenceUsage: true,
 		Long: "Replaces the running binary with the latest release asset for this\n" +
 			"platform, after verifying it against " + ChecksumsFile + ".\n\n" +
 			"For a private repository, supply a token with --token or by setting\n" +
@@ -134,13 +138,15 @@ func (a *App) runUpdate(ctx context.Context, checkOnly bool, token string) error
 		return fmt.Errorf("no release of %s has an asset for %s/%s", slug, runtime.GOOS, runtime.GOARCH)
 	}
 
+	latest := displayVersion(release.Version())
+
 	if current != devVersion && !release.GreaterThan(current) {
-		fmt.Printf("%s is already the latest version.\n", current)
+		fmt.Printf("%s is already the latest version.\n", displayVersion(current))
 		return nil
 	}
 
 	if checkOnly {
-		fmt.Printf("%s is available (running %s).\n%s\n", release.Version(), current, release.URL)
+		fmt.Printf("%s is available (running %s).\n%s\n", latest, displayVersion(current), release.URL)
 		return nil
 	}
 
@@ -149,14 +155,27 @@ func (a *App) runUpdate(ctx context.Context, checkOnly bool, token string) error
 		return fmt.Errorf("locating this binary: %w", err)
 	}
 
-	fmt.Printf("Updating %s -> %s...\n", current, release.Version())
+	fmt.Printf("Updating %s -> %s...\n", displayVersion(current), latest)
 
 	if err := updater.UpdateTo(ctx, release, exe); err != nil {
-		return fmt.Errorf("installing %s: %w%s", release.Version(), err, tokenHint(token))
+		return fmt.Errorf("installing %s: %w%s", latest, err, tokenHint(token))
 	}
 
-	fmt.Printf("Updated to %s.\n", release.Version())
+	fmt.Printf("Updated to %s.\n", latest)
 	return nil
+}
+
+// displayVersion prints versions one way. The release source strips the "v"
+// that tags and ldflags carry, so without this a single line can read
+// "0.1.0 is available (running v0.0.1)".
+func displayVersion(v string) string {
+	if v == "" || v == devVersion {
+		return devVersion
+	}
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+	return "v" + v
 }
 
 // tokenHint explains the most common cause of failure: a private repository
