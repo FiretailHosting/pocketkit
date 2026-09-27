@@ -26,6 +26,12 @@ func WithRauthy(config RauthyConfig) Option {
 	return func(c *Config) { c.Rauthy = &config }
 }
 
+// MigrateRauthy applies the collection settings required by WithRauthy.
+// Call it from an application migration using the same config.
+func MigrateRauthy(app core.App, config RauthyConfig) error {
+	return sso.Migrate(app, config)
+}
+
 // bindAuthPolicy wires Rauthy sign-in into the app.
 //
 // pocketkit does not implement this itself. Disabling password login is the
