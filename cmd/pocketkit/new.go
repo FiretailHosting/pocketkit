@@ -24,14 +24,16 @@ func cmdNew(args []string) error {
 	name := filepath.Base(dir)
 
 	files := map[string]string{
-		"go.mod":                        fmt.Sprintf(tmplGoMod, modulePath),
-		"main.go":                       fmt.Sprintf(tmplMain, modulePath),
-		"api/ping/GET.go":               tmplPing,
-		"migrations/doc.go":             tmplMigrationsDoc,
-		".gitignore":                    tmplGitignore,
-		"README.md":                     fmt.Sprintf(tmplReadme, name),
-		"frontend/build/.gitkeep":       tmplGitkeep,
-		".github/workflows/release.yml": tmplReleaseWorkflow,
+		"go.mod":                          fmt.Sprintf(tmplGoMod, modulePath),
+		"main.go":                         fmt.Sprintf(tmplMain, modulePath),
+		"api/ping/GET.go":                 tmplPing,
+		"migrations/doc.go":               tmplMigrationsDoc,
+		"internal/auth/auth.go":           fmt.Sprintf(tmplAuthConfig, name),
+		"migrations/1700000000_rauthy.go": fmt.Sprintf(tmplAuthMigration, modulePath),
+		".gitignore":                      tmplGitignore,
+		"README.md":                       fmt.Sprintf(tmplReadme, name),
+		"frontend/build/.gitkeep":         tmplGitkeep,
+		".github/workflows/release.yml":   tmplReleaseWorkflow,
 	}
 
 	for rel, content := range files {
@@ -48,6 +50,12 @@ func cmdNew(args []string) error {
 	}
 
 	fmt.Printf("created %s\n", dir)
+
+	// Generate the wiring now so the app builds and serves its routes straight
+	// away. pocketkit_gen.go is committed, so this is the first version of it.
+	if _, _, err := generate(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "pocketkit: could not generate route wiring: %v\n", err)
+	}
 
 	if err := scaffoldFrontend(dir); err != nil {
 		fmt.Fprintf(os.Stderr, "pocketkit: frontend scaffold skipped: %v\n", err)
