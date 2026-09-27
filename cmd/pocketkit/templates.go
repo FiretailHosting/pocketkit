@@ -237,25 +237,22 @@ jobs:
           name=$(basename "$(go list -m)")
           mkdir -p dist
 
-          # PocketBase uses a pure-Go SQLite driver, so every target
-          # cross-compiles from this one runner with CGO off.
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-            os=${target%%/*}
-            arch=${target#*/}
-            echo "building $os/$arch"
-
-            GOOS=$os GOARCH=$arch go build \
+          # Linux only, and raw binaries rather than archives: that is the
+          # layout FiretailHosting/go-selfupdate expects. The asset name must
+          # be exactly <name>-linux-<arch>, and the binary must print its bare
+          # X.Y.Z for --version, which the updater checks after downloading.
+          # PocketBase'"'"'s SQLite driver is pure Go, so both arches cross-compile
+          # from this one runner with CGO off.
+          for arch in amd64 arm64; do
+            echo "building linux/$arch"
+            GOOS=linux GOARCH=$arch go build \
               -trimpath \
               -ldflags "-s -w -X github.com/FiretailHosting/pocketkit.Version=${VERSION}" \
-              -o "dist/$name" .
-
-            # The name must end in <os>_<arch>.tar.gz: that suffix is how the
-            # update command picks the right asset for the machine it runs on.
-            tar -czf "dist/${name}_${VERSION}_${os}_${arch}.tar.gz" -C dist "$name"
-            rm "dist/$name"
+              -o "dist/${name}-linux-${arch}" .
           done
 
-          cd dist && sha256sum *.tar.gz > checksums.txt
+          # sha256sum'"'"'s "<hex>  <name>" format is what the updater parses.
+          cd dist && sha256sum "${name}"-linux-* > checksums.txt
           cat checksums.txt
 
       - name: Publish release
