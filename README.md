@@ -126,7 +126,7 @@ local database and writes `frontend/src/lib/pocketbase-types.ts`.
 ## Install
 
 ```
-go install github.com/Ovi1kanobe/pocketkit/cmd/pocketkit@latest
+go install github.com/FiretailHosting/pocketkit/cmd/pocketkit@latest
 ```
 
 ## Start an app

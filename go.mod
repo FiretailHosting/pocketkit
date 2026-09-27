@@ -1,4 +1,4 @@
-module github.com/Ovi1kanobe/pocketkit
+module github.com/FiretailHosting/pocketkit
 
 go 1.27.1
 

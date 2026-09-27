@@ -16,7 +16,7 @@ import (
 //
 // Release builds stamp it:
 //
-//	go build -ldflags "-X github.com/Ovi1kanobe/pocketkit.Version=v1.2.3"
+//	go build -ldflags "-X github.com/FiretailHosting/pocketkit.Version=v1.2.3"
 //
 // Left empty it falls back to the version the module was built from, and
 // finally to "dev", which never satisfies an update check.
@@ -108,7 +108,7 @@ func (a *App) runUpdate(ctx context.Context, checkOnly bool, token string) error
 	current := BuildVersion()
 	if current == devVersion && !checkOnly {
 		return fmt.Errorf("this is a %s build with no version to compare against; "+
-			"install a release, or build with -ldflags \"-X github.com/Ovi1kanobe/pocketkit.Version=vX.Y.Z\"", devVersion)
+			"install a release, or build with -ldflags \"-X github.com/FiretailHosting/pocketkit.Version=vX.Y.Z\"", devVersion)
 	}
 
 	if token == "" {

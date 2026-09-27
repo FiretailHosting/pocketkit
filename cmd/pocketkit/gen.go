@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Ovi1kanobe/pocketkit/internal/gen"
-	"github.com/Ovi1kanobe/pocketkit/internal/scan"
+	"github.com/FiretailHosting/pocketkit/internal/gen"
+	"github.com/FiretailHosting/pocketkit/internal/scan"
 )
 
 // GenFile is the name of the file pocketkit writes at the app root.

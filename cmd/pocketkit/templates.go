@@ -6,7 +6,7 @@ go 1.25
 
 // Lets CI and collaborators run the pocketkit CLI at the version this app
 // pins, with "go tool pocketkit", instead of installing it separately.
-tool github.com/Ovi1kanobe/pocketkit/cmd/pocketkit
+tool github.com/FiretailHosting/pocketkit/cmd/pocketkit
 `
 
 const tmplMain = `package main
@@ -15,7 +15,7 @@ import (
 	"embed"
 	"log"
 
-	"github.com/Ovi1kanobe/pocketkit"
+	"github.com/FiretailHosting/pocketkit"
 
 	// Committed migrations are the schema's source of truth. Blank-importing
 	// them here is what makes a fresh clone rebuild the exact same database.
@@ -93,7 +93,7 @@ dist/
 !.env.example
 `
 
-const tmplReadme = "# %s\n\n" + `Built with [pocketkit](https://github.com/Ovi1kanobe/pocketkit).
+const tmplReadme = "# %s\n\n" + `Built with [pocketkit](https://github.com/FiretailHosting/pocketkit).
 
 ## Develop
 
@@ -246,7 +246,7 @@ jobs:
 
             GOOS=$os GOARCH=$arch go build \
               -trimpath \
-              -ldflags "-s -w -X github.com/Ovi1kanobe/pocketkit.Version=${VERSION}" \
+              -ldflags "-s -w -X github.com/FiretailHosting/pocketkit.Version=${VERSION}" \
               -o "dist/$name" .
 
             # The name must end in <os>_<arch>.tar.gz: that suffix is how the

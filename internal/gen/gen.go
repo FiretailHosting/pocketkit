@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Ovi1kanobe/pocketkit/internal/scan"
+	"github.com/FiretailHosting/pocketkit/internal/scan"
 )
 
 // Header marks the generated file. `go generate`'s convention, so tooling and
@@ -38,7 +38,7 @@ func File(res *scan.Result, pkgName string) ([]byte, error) {
 	fmt.Fprintf(&b, "%s\n//\n// Regenerate with `pocketkit gen`.\n\npackage %s\n\n", Header, pkgName)
 
 	b.WriteString("import (\n")
-	b.WriteString("\t\"github.com/Ovi1kanobe/pocketkit\"\n")
+	b.WriteString("\t\"github.com/FiretailHosting/pocketkit\"\n")
 	if len(res.Hooks) > 0 {
 		b.WriteString("\t\"github.com/pocketbase/pocketbase/core\"\n")
 	}
