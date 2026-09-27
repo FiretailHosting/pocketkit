@@ -81,6 +81,19 @@ there, never in the repo. `_superusers` keeps its password: the dashboard is
 where OIDC gets configured, so locking it behind OIDC would leave nobody able
 to set it up.
 
+Two things catch people out when wiring this up.
+
+**Add `groups` to the client's default scopes in Rauthy.**
+PocketBase's OIDC provider requests `openid`, `email` and `profile`, and that list is not configurable.
+It never asks for `groups`, so Rauthy sends the claim only if the client emits it unasked.
+This is a per-client setting, separate from the global scope list, which is already marked default and does not affect it.
+Miss it and every sign-in fails with "Your account is not in the ... group", which points at membership rather than at the absent claim.
+
+**The redirect URI follows the origin you open, not the server's address.**
+The JS SDK builds it from its own base URL, which the scaffold sets to `window.location.origin`.
+Opening the binary directly gives `http://127.0.0.1:8090/api/oauth2-redirect`, while the dev server gives `http://localhost:5173/api/oauth2-redirect`.
+Register whichever you use, or both.
+
 **4. Hooks are files too.** A directory named after a PocketBase hook binds to it.
 A directory above it scopes it to a collection.
 
