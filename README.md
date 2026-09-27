@@ -55,6 +55,11 @@ you notice immediately. A mistyped directive fails the same safe way. Per-route
 middleware goes in a `GETMiddlewares` slice, named after its method for the same
 reason the handler is.
 
+The middleware slice may live in any ordinary Go file in the same package.
+At the default priority, authentication runs first and explicit `apis.RequireAuth("staff")` middleware adds a collection restriction.
+A negative middleware priority explicitly runs before the auth guard and must not serve protected content.
+`PublicByDefault()` disables the automatic guard; protect individual routes with explicit auth middleware.
+
 **3. Auth is OIDC-only, through Rauthy.** Sign-in goes through
 [pocketbase-rauthy](https://github.com/FiretailHosting/pocketbase-rauthy):
 
@@ -65,8 +70,11 @@ pocketkit.New(pocketkit.WithRauthy(pocketkit.RauthyConfig{
 }))
 ```
 
-Password and OTP login are off, accounts are created only through the OAuth2
-flow, and membership of `RequiredGroup` with a verified email is required.
+The scaffold's Rauthy migration disables password and OTP login for its auth collection.
+Rauthy sign-in requires membership of `RequiredGroup` and a verified email; ordinary clients can create accounts only through the OAuth2 flow.
+When integrating an existing app, pair `WithRauthy` with a migration calling `pocketbase-rauthy.Migrate` with the same config.
+Without `WithRauthy`, existing authentication settings remain unchanged and pocketkit logs a warning.
+`AllowPasswords()` acknowledges that choice and silences the warning; it does not change login settings.
 
 `SessionMaxAge` is the part worth understanding. PocketBase auth tokens last
 days, so disabling passwords is not enough on its own: without a session cap, a
@@ -129,7 +137,7 @@ while development still picks up whatever the dev server just wrote. The `all:`
 prefix is not optional - SvelteKit emits into `_app`, and a plain `//go:embed`
 skips paths beginning with an underscore.
 
-**8. Apps update themselves.** Every pocketkit app gets `update` and `version`
+**7. Apps update themselves.** Every pocketkit app gets `update` and `version`
 for free:
 
 ```
@@ -138,20 +146,28 @@ myapp update --check    # just say whether one exists
 myapp version
 ```
 
-It reads the repository from the app's own module path, downloads the asset
-matching the current OS and architecture, and verifies it against the release's
-`checksums.txt` before replacing anything. Private repositories work - pass
+Self-update supports Linux amd64 and arm64.
+It reads the repository from the app's own module path, downloads the matching `<name>-linux-<arch>` binary, and verifies it against the release's `checksums.txt` before replacing anything.
+Private repositories work - pass
 `--token` or set `GITHUB_TOKEN`, and assets are fetched through the GitHub API
 rather than a public download URL.
 
-`pocketkit new` also writes a release workflow that fires only on a `v*` tag,
-builds the frontend once, and cross-compiles linux and darwin on amd64 and
-arm64 from a single runner. PocketBase's SQLite driver is pure Go, so `CGO` stays
-off and no per-platform runners are needed.
+`pocketkit new` also writes a release workflow that fires only on a `v*` tag, builds the frontend once, and cross-compiles Linux amd64 and arm64 from a single runner.
+PocketBase's SQLite driver is pure Go, so `CGO` stays off and no per-platform runners are needed.
 
-**7. Types are generated, not written.** `pocketkit types` runs a pinned
+**8. Types are generated, not written.** `pocketkit types` runs a pinned
 [pocketbase-typegen](https://github.com/patmood/pocketbase-typegen) against the
 local database and writes `frontend/src/lib/pocketbase-types.ts`.
+
+The scaffold starts with a standard PocketBase client, so it works before types are generated.
+After running `pocketkit dev` once to apply migrations and `pocketkit types`, opt into typed collection access in `frontend/src/lib/pb.ts`:
+
+```ts
+import PocketBase from 'pocketbase';
+import type { TypedPocketBase } from './pocketbase-types';
+
+export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
+```
 
 ## Install
 

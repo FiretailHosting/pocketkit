@@ -161,3 +161,70 @@ func TestPublicDirectiveOnlyAppliesToItsOwnMethod(t *testing.T) {
 		}
 	}
 }
+
+func writeSource(t *testing.T, root, name, body string) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMiddlewareCanMoveBetweenPackageFiles(t *testing.T) {
+	root := t.TempDir()
+	writeSource(t, root, "api/x/GET.go", "package x\nfunc GET() error { return nil }\n")
+	writeSource(t, root, "api/x/POST.go", "package x\n//pocketkit:public\nfunc POST() error { return nil }\n")
+	writeSource(t, root, "api/x/middleware.go", "package x\nvar GETMiddlewares = []int{1}\n")
+	// Test-only declarations must not affect production wiring.
+	writeSource(t, root, "api/x/middleware_test.go", "package x\nvar POSTMiddlewares = []int{1}\n")
+	res, err := App(root, "example.com/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range res.Routes {
+		if route.Method == "GET" && (route.Middlewares != "GETMiddlewares" || route.Public) {
+			t.Errorf("GET lost middleware or inherited public directive: %+v", route)
+		}
+		if route.Method == "POST" && (route.Middlewares != "" || !route.Public) {
+			t.Errorf("POST inherited test middleware or lost public directive: %+v", route)
+		}
+	}
+}
+
+func TestAppRejectsInvalidAndConflictingPatterns(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dirs []string
+	}{
+		{"equivalent parameters", []string{"coins/_id", "coins/_slug"}},
+		{"overlapping paths", []string{"coins/_id/latest", "coins/latest/_id"}},
+		{"nonterminal wildcard", []string{"assets/_path_/details"}},
+		{"repeated parameter", []string{"coins/_id/notes/_id"}},
+		{"invalid parameter", []string{"coins/_123"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, dir := range tc.dirs {
+				writeSource(t, root, "api/"+dir+"/GET.go", "package route\nfunc GET() error { return nil }\n")
+			}
+			_, err := App(root, "example.com/app")
+			if err == nil || !strings.Contains(err.Error(), "GET.go") || !strings.Contains(err.Error(), "invalid or conflicting route") {
+				t.Fatalf("expected actionable pattern error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestAppAcceptsDifferentMethodsAndMoreSpecificRoutes(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"coins/_id", "coins/latest", "assets/_path_"} {
+		writeSource(t, root, "api/"+dir+"/GET.go", "package route\nfunc GET() error { return nil }\n")
+	}
+	writeSource(t, root, "api/coins/_slug/POST.go", "package route\nfunc POST() error { return nil }\n")
+	if _, err := App(root, "example.com/app"); err != nil {
+		t.Fatal(err)
+	}
+}

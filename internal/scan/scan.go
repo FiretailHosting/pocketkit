@@ -1,7 +1,6 @@
 // Package scan walks a pocketkit app's api/ and hooks/ directories and reports
 // what it finds. It reads real Go source -- the package clause and the exported
-// declarations -- rather than relying on magic comments, so route files stay
-// ordinary Go that an editor and the compiler both understand.
+// declarations -- plus the explicit public directive on route handlers.
 package scan
 
 import (
@@ -10,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -121,6 +121,12 @@ func scanAPI(apiDir, modulePath, root string) ([]Route, error) {
 		if !info.hasHandler {
 			return fmt.Errorf("%s: declares no `func %s(e *core.RequestEvent) error`", rel(root, p), method)
 		}
+		// Middleware belongs to the package; moving it to a sibling file must
+		// not silently remove authorization or other request policy.
+		pkgInfo, _, err := inspectDir(pkgDir, method)
+		if err != nil {
+			return err
+		}
 
 		imp, err := importPath(modulePath, root, pkgDir)
 		if err != nil {
@@ -136,7 +142,7 @@ func scanAPI(apiDir, modulePath, root string) ([]Route, error) {
 			Handler:    method,
 			Public:     info.public,
 		}
-		if info.hasMiddlewares {
+		if pkgInfo != nil && pkgInfo.hasMiddlewares {
 			route.Middlewares = method + middlewaresSuffix
 		}
 		routes = append(routes, route)
@@ -153,14 +159,26 @@ func scanAPI(apiDir, modulePath, root string) ([]Route, error) {
 		return routes[i].Method < routes[j].Method
 	})
 
-	for i := 1; i < len(routes); i++ {
-		if routes[i].Path == routes[i-1].Path && routes[i].Method == routes[i-1].Method {
-			return nil, fmt.Errorf("duplicate route %s %s: %s and %s",
-				routes[i].Method, routes[i].Path, rel(root, routes[i-1].File), rel(root, routes[i].File))
+	mux := http.NewServeMux()
+	for _, route := range routes {
+		if err := validatePattern(mux, route.Method+" "+route.Path); err != nil {
+			return nil, fmt.Errorf("%s: %w", rel(root, route.File), err)
 		}
 	}
 
 	return routes, nil
+}
+
+// PocketBase uses ServeMux, so use its pattern and conflict rules rather than
+// maintaining a second implementation. Registration panics become scan errors.
+func validatePattern(mux *http.ServeMux, pattern string) (err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			err = fmt.Errorf("invalid or conflicting route %q: %v", pattern, v)
+		}
+	}()
+	mux.HandleFunc(pattern, func(http.ResponseWriter, *http.Request) {})
+	return nil
 }
 
 func scanHooks(hooksDir, modulePath, root string) ([]Hook, error) {

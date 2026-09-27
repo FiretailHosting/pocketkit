@@ -36,6 +36,9 @@ func File(res *scan.Result, pkgName string) ([]byte, error) {
 	}
 
 	fmt.Fprintf(&b, "%s\n//\n// Regenerate with `pocketkit gen`.\n\npackage %s\n\n", Header, pkgName)
+	if len(res.Routes) == 0 && len(res.Hooks) == 0 {
+		return format.Source(b.Bytes())
+	}
 
 	b.WriteString("import (\n")
 	b.WriteString("\t\"github.com/FiretailHosting/pocketkit\"\n")
