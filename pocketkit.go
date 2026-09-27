@@ -13,6 +13,7 @@
 package pocketkit
 
 import (
+	"io/fs"
 	"os"
 
 	"github.com/pocketbase/pocketbase"
@@ -21,11 +22,24 @@ import (
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 )
 
+// EmbeddedFrontendDir is the path an app's //go:embed directive is expected to
+// capture. A frontend embedded at this path needs no configuration.
+const EmbeddedFrontendDir = "frontend/build"
+
 // Config holds the few things pocketkit lets you change.
 type Config struct {
-	// FrontendDir is the built frontend served at the site root.
-	// Defaults to "frontend/build".
+	// FrontendDir is the built frontend served at the site root when nothing is
+	// embedded. Defaults to "frontend/build".
 	FrontendDir string
+
+	// FrontendFS is a frontend compiled into the binary. When it contains an
+	// index.html it wins over FrontendDir, so a release is one file with no
+	// directory to ship beside it.
+	FrontendFS fs.FS
+
+	// Slug overrides the "owner/repo" the update command pulls releases from.
+	// Empty means derive it from the module path.
+	Slug string
 
 	// AllowPasswords disables pocketkit's OIDC-only opinion. Off by default,
 	// and you should need a good reason to turn it on.
@@ -53,6 +67,28 @@ type Option func(*Config)
 // WithFrontend sets the directory of the built frontend.
 func WithFrontend(dir string) Option {
 	return func(c *Config) { c.FrontendDir = dir }
+}
+
+// WithFrontendFS serves a frontend compiled into the binary.
+//
+// Pass the embed.FS directly; pocketkit looks inside it for
+// EmbeddedFrontendDir and falls back to its root:
+//
+//	//go:embed all:frontend/build
+//	var frontend embed.FS
+//
+//	pocketkit.New(pocketkit.WithFrontendFS(frontend))
+//
+// The all: prefix matters. SvelteKit emits its assets into _app, and a plain
+// //go:embed skips paths beginning with an underscore.
+func WithFrontendFS(fsys fs.FS) Option {
+	return func(c *Config) { c.FrontendFS = fsys }
+}
+
+// WithUpdates overrides the "owner/repo" that `update` pulls releases from.
+// By default it is derived from the app's module path.
+func WithUpdates(slug string) Option {
+	return func(c *Config) { c.Slug = slug }
 }
 
 // AllowPasswords re-enables password login. See Config.AllowPasswords.
@@ -89,6 +125,7 @@ func New(opts ...Option) *App {
 	a.bindAuthPolicy()
 	a.bindHooks()
 	a.bindRoutes()
+	a.bindUpdateCommand()
 
 	return a
 }
@@ -130,16 +167,48 @@ func (a *App) requiresAuth(r RouteDef) bool {
 
 // serveFrontend serves the built frontend at the site root with SPA fallback.
 // It is registered last so API routes always win.
+//
+// An embedded frontend wins over the directory: a release is then a single
+// binary, while development still picks up whatever is on disk.
 func (a *App) serveFrontend(se *core.ServeEvent) {
+	if fsys, ok := a.embeddedFrontend(); ok {
+		se.Router.GET("/{path...}", apis.Static(fsys, true))
+		return
+	}
+
 	if a.cfg.FrontendDir == "" {
 		return
 	}
 	if st, err := os.Stat(a.cfg.FrontendDir); err != nil || !st.IsDir() {
 		se.App.Logger().Warn(
-			"pocketkit: frontend directory not found; serving API only",
+			"pocketkit: no frontend embedded and none on disk; serving API only",
 			"dir", a.cfg.FrontendDir,
 		)
 		return
 	}
 	se.Router.GET("/{path...}", apis.Static(os.DirFS(a.cfg.FrontendDir), true))
+}
+
+// embeddedFrontend returns the embedded site, if one was built in.
+//
+// A scaffolded app always embeds frontend/build, but that directory holds only
+// a placeholder until the frontend is built -- so the presence of index.html,
+// not of the FS, decides whether anything was really embedded.
+func (a *App) embeddedFrontend() (fs.FS, bool) {
+	if a.cfg.FrontendFS == nil {
+		return nil, false
+	}
+
+	candidates := []fs.FS{}
+	if sub, err := fs.Sub(a.cfg.FrontendFS, EmbeddedFrontendDir); err == nil {
+		candidates = append(candidates, sub)
+	}
+	candidates = append(candidates, a.cfg.FrontendFS)
+
+	for _, fsys := range candidates {
+		if _, err := fs.Stat(fsys, "index.html"); err == nil {
+			return fsys, true
+		}
+	}
+	return nil, false
 }

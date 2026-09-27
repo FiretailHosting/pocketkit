@@ -79,10 +79,45 @@ the compiler checks them for you and every PocketBase hook works automatically.
 PocketBase writes them out as Go migrations, and you commit those. `pb_data/` is
 disposable — a fresh clone rebuilds the exact same database.
 
-**6. One origin, always.** SvelteKit builds to `frontend/build` as a static SPA
-and PocketBase serves it at the site root. The dev server proxies `/api` and
-`/_` to PocketBase, so the frontend talks to the same origin in development and
-in production, and auth cookies behave identically in both.
+**6. One origin, always — and in production, one file.** SvelteKit builds to
+`frontend/build` as a static SPA and PocketBase serves it at the site root. The
+dev server proxies `/api` and `/_` to PocketBase, so the frontend talks to the
+same origin in development and in production, and auth cookies behave
+identically in both.
+
+For release builds the site is compiled into the binary:
+
+```go
+//go:embed all:frontend/build
+var frontend embed.FS
+
+app := pocketkit.New(pocketkit.WithFrontendFS(frontend))
+```
+
+An embedded site wins over the directory, so deploying is copying one file,
+while development still picks up whatever the dev server just wrote. The `all:`
+prefix is not optional — SvelteKit emits into `_app`, and a plain `//go:embed`
+skips paths beginning with an underscore.
+
+**8. Apps update themselves.** Every pocketkit app gets `update` and `version`
+for free:
+
+```
+myapp update            # install the latest release
+myapp update --check    # just say whether one exists
+myapp version
+```
+
+It reads the repository from the app's own module path, downloads the asset
+matching the current OS and architecture, and verifies it against the release's
+`checksums.txt` before replacing anything. Private repositories work — pass
+`--token` or set `GITHUB_TOKEN`, and assets are fetched through the GitHub API
+rather than a public download URL.
+
+`pocketkit new` also writes a release workflow that fires only on a `v*` tag,
+builds the frontend once, and cross-compiles linux and darwin on amd64 and
+arm64 from a single runner. PocketBase's SQLite driver is pure Go, so `CGO` stays
+off and no per-platform runners are needed.
 
 **7. Types are generated, not written.** `pocketkit types` runs a pinned
 [pocketbase-typegen](https://github.com/patmood/pocketbase-typegen) against the
@@ -117,6 +152,14 @@ then runs PocketBase on `:8090` and the frontend dev server on `:5173`.
 | `pocketkit types` | Generate frontend TypeScript types |
 | `pocketkit check` | Vet every package, including `_`-prefixed route dirs |
 
+And in every app you build with it:
+
+| Command | Does |
+| --- | --- |
+| `myapp update` | Replace this binary with the latest release |
+| `myapp update --check` | Report whether an update exists |
+| `myapp version` | Print version, OS and architecture |
+
 `pocketkit check` exists because `go vet ./...` silently skips directories
 starting with `_`, which is how path parameters are spelled. It passes those
 packages explicitly so nothing goes unchecked.
@@ -131,3 +174,15 @@ backups, batch, collections, crons, files, health, logs, realtime, settings, sql
 ```
 
 Only the first segment is reserved — `/api/coins/health` is fine.
+
+## Generated files
+
+`pocketkit_gen.go` is committed, not ignored: a fresh clone then builds with
+plain `go build`, and CI checks it is current with
+
+```
+go tool pocketkit gen && git diff --exit-code pocketkit_gen.go
+```
+
+The `tool` directive in an app's `go.mod` pins the CLI to the same version as
+the library, so nobody has to install it separately.
