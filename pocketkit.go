@@ -15,6 +15,7 @@ package pocketkit
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -182,9 +183,13 @@ func (a *App) serveFrontend(se *core.ServeEvent) {
 	if a.cfg.FrontendDir == "" {
 		return
 	}
-	if st, err := os.Stat(a.cfg.FrontendDir); err != nil || !st.IsDir() {
+	// The directory alone is not enough: a scaffolded app keeps a placeholder
+	// in frontend/build so //go:embed compiles, and serving that would mount a
+	// catch-all that answers every unmatched path with "File not found"
+	// instead of letting the API's own 404 through.
+	if _, err := os.Stat(filepath.Join(a.cfg.FrontendDir, "index.html")); err != nil {
 		se.App.Logger().Warn(
-			"pocketkit: no frontend embedded and none on disk; serving API only",
+			"pocketkit: no frontend embedded and none built on disk; serving API only",
 			"dir", a.cfg.FrontendDir,
 		)
 		return
