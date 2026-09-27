@@ -135,7 +135,10 @@ func (a *App) runUpdate(ctx context.Context, checkOnly bool, token string) error
 		return fmt.Errorf("looking up the latest release of %s: %w%s", slug, err, tokenHint(token))
 	}
 	if !found {
-		return fmt.Errorf("no release of %s has an asset for %s/%s", slug, runtime.GOOS, runtime.GOARCH)
+		// go-selfupdate reports "not found" for an unreadable repository and
+		// for a genuinely assetless release alike, so ask GitHub which it was.
+		return fmt.Errorf("no release of %s has an asset for %s/%s%s",
+			slug, runtime.GOOS, runtime.GOARCH, diagnoseAccess(ctx, slug, token))
 	}
 
 	latest := displayVersion(release.Version())
