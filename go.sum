@@ -1,7 +1,7 @@
 github.com/FiretailHosting/go-selfupdate v0.2.1 h1:jvhuo39EbxgAZuB0XzGVnDHR4urt9ypXaVQuDAlhdgI=
 github.com/FiretailHosting/go-selfupdate v0.2.1/go.mod h1:EzQ3p8uhJdCdnlgRXcrhVPaJjl89IXCL6B0mst34w7A=
-github.com/FiretailHosting/pocketbase-sso v0.0.0-20260927220801-5b304e0f0834 h1:gJ0+S9DoUhcNITqlxQ/9f5doFRWHc8sMGCn+p/mG/+U=
-github.com/FiretailHosting/pocketbase-sso v0.0.0-20260927220801-5b304e0f0834/go.mod h1:NtBHBZP6RT8lR2S7sf8+fZQLgxD7Cb9MYq8hp43omM0=
+github.com/FiretailHosting/pocketbase-sso v0.1.0 h1:L20LbyLAYoCYwvtkwnq1USSfnOa6BlADd+5A7R4gQj4=
+github.com/FiretailHosting/pocketbase-sso v0.1.0/go.mod h1:NtBHBZP6RT8lR2S7sf8+fZQLgxD7Cb9MYq8hp43omM0=
 github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496/go.mod h1:oGkLhpf+kjZl6xBf758TQhh5XrAeiJv/7FRz/2spLIg=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
