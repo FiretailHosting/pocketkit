@@ -15,8 +15,9 @@ import (
 )
 
 type processReady struct {
-	PID     int
-	Address string
+	PID        int
+	Address    string
+	BackendURL string
 }
 
 // The subprocess acts like go run/npm and a child server that ignores SIGTERM.
@@ -49,7 +50,7 @@ func TestDevProcessHelper(t *testing.T) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	ready, err := json.Marshal(processReady{PID: os.Getpid(), Address: listener.Addr().String()})
+	ready, err := json.Marshal(processReady{PID: os.Getpid(), Address: listener.Addr().String(), BackendURL: os.Getenv("POCKETKIT_BACKEND_URL")})
 	if err != nil {
 		os.Exit(1)
 	}
@@ -155,10 +156,13 @@ func TestFrontendCancellationIsBounded(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		runFrontend(ctx, root, []string{os.Args[0], "-test.run=^TestDevProcessHelper$"})
+		runFrontend(ctx, root, []string{os.Args[0], "-test.run=^TestDevProcessHelper$"}, "http://127.0.0.1:9090")
 		close(done)
 	}()
 	ready := waitForServer(t, readyFile)
+	if ready.BackendURL != "http://127.0.0.1:9090" {
+		t.Errorf("frontend backend URL = %q", ready.BackendURL)
+	}
 	cancel()
 	select {
 	case <-done:

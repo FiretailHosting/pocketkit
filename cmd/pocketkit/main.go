@@ -20,7 +20,7 @@ Commands:
   routes       List the routes and hooks pocketkit discovered
   dev          Regenerate, then run the app with live reload
   types        Generate frontend TypeScript types from the current schema
-  check        Vet every package, including route directories go vet skips
+  check        Vet and race-test packages, including parameter routes
   help         Show this message
 `
 

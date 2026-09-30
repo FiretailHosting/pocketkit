@@ -19,6 +19,8 @@ func cmdNew(args []string) error {
 	}
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("%s already exists", dir)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect destination %s: %w", dir, err)
 	}
 
 	name := filepath.Base(dir)
@@ -29,11 +31,12 @@ func cmdNew(args []string) error {
 		"api/ping/GET.go":               tmplPing,
 		"migrations/doc.go":             tmplMigrationsDoc,
 		"internal/auth/auth.go":         fmt.Sprintf(tmplAuthConfig, name),
-		"migrations/1700000000_sso.go":  fmt.Sprintf(tmplAuthMigration, modulePath),
+		"migrations/1700000000_sso.go":  fmt.Sprintf(tmplAuthMigration, name),
 		".gitignore":                    tmplGitignore,
 		"README.md":                     fmt.Sprintf(tmplReadme, name),
 		"frontend/build/.gitkeep":       tmplGitkeep,
 		".github/workflows/release.yml": tmplReleaseWorkflow,
+		".github/workflows/check.yml":   tmplCheckWorkflow,
 	}
 
 	for rel, content := range files {
@@ -49,18 +52,17 @@ func cmdNew(args []string) error {
 		return err
 	}
 
-	fmt.Printf("created %s\n", dir)
-
 	// Generate the wiring now so the app builds and serves its routes straight
 	// away. pocketkit_gen.go is committed, so this is the first version of it.
 	if _, _, err := generate(dir); err != nil {
-		fmt.Fprintf(os.Stderr, "pocketkit: could not generate route wiring: %v\n", err)
+		return fmt.Errorf("generate wiring in partial scaffold %s: %w", dir, err)
 	}
 
 	if err := scaffoldFrontend(dir); err != nil {
-		fmt.Fprintf(os.Stderr, "pocketkit: frontend scaffold skipped: %v\n", err)
+		return fmt.Errorf("create frontend in partial scaffold %s: %w", dir, err)
 	}
 
+	fmt.Printf("created %s\n", dir)
 	fmt.Printf("\nNext:\n  cd %s\n  go mod tidy\n  pocketkit dev\n", dir)
 	fmt.Println("\nAfter the first boot applies migrations, run this in a second terminal:\n  pocketkit types\nThen complete the typed-client setup in README.md.")
 	return nil
