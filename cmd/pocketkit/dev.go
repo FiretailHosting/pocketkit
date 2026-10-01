@@ -213,12 +213,13 @@ func syncWatchDirs(w *fsnotify.Watcher, root string) error {
 			delete(wanted, watched)
 			continue
 		}
-		if err := w.Remove(watched); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
+		// Windows reports a deleted directory as missing rather than unwatched.
+		if err := w.Remove(watched); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("unwatch %s: %w", watched, err)
 		}
 	}
 	for dir := range wanted {
-		if err := w.Add(dir); err != nil && !os.IsNotExist(err) {
+		if err := w.Add(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("watch %s: %w", dir, err)
 		}
 	}

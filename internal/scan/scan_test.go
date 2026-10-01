@@ -236,7 +236,7 @@ func TestAppRejectsOAuthCallback(t *testing.T) {
 			file := "api/oauth2-redirect/" + method + ".go"
 			writeSource(t, root, file, "package callback\nfunc "+method+"() error {return nil}\n")
 			_, err := App(root, "example.com/app")
-			if err == nil || !strings.Contains(err.Error(), "OAuth2 callback") || !strings.Contains(err.Error(), file) {
+			if err == nil || !strings.Contains(err.Error(), "OAuth2 callback") || !strings.Contains(err.Error(), filepath.FromSlash(file)) {
 				t.Fatalf("expected actionable reserved callback error, got %v", err)
 			}
 		})
