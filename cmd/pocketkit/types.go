@@ -32,7 +32,7 @@ func cmdTypes(args []string) error {
 
 	dbPath := filepath.Join(root, *db)
 	if _, err := os.Stat(dbPath); err != nil {
-		return fmt.Errorf("no database at %s -- run `pocketkit dev` once to create it", *db)
+		return fmt.Errorf("no database at %s -- run `go tool pocketkit dev` once to create it", *db)
 	}
 
 	outPath := filepath.Join(root, *out)

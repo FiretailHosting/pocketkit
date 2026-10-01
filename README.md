@@ -182,12 +182,12 @@ go install github.com/FiretailHosting/pocketkit/cmd/pocketkit@latest
 pocketkit new github.com/you/myapp
 cd myapp
 go mod tidy
-pocketkit dev
+go tool pocketkit dev
 ```
 
 This scaffolds the Go app and a SvelteKit frontend wired to the opinions above,
 then runs PocketBase on `:8090` and the frontend dev server on `:5173`.
-`pocketkit dev --http 127.0.0.1:9090` updates both the backend address and the
+`go tool pocketkit dev --http 127.0.0.1:9090` updates both the backend address and the
 frontend proxy. Existing apps should read `process.env.POCKETKIT_BACKEND_URL`
 in their Vite proxy configuration, with `http://127.0.0.1:8090` as the fallback.
 If scaffolding fails, the command exits unsuccessfully and retains its partial
@@ -197,7 +197,7 @@ Once PocketBase has started and applied migrations, generate types in a second t
 The dev server can keep running, since type generation only reads the database.
 
 ```
-pocketkit types
+go tool pocketkit types
 ```
 
 In `frontend/src/lib/pb.ts`, add the type import and replace the client declaration, keeping the sign-in helper:
@@ -210,7 +210,7 @@ export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
 ```
 
 Commit `frontend/src/lib/pocketbase-types.ts` and the updated `pb.ts`.
-After schema changes, apply migrations locally and rerun `pocketkit types`; commit the regenerated types with the migrations.
+After schema changes, apply migrations locally and rerun `go tool pocketkit types`; commit the regenerated types with the migrations.
 The initial client works before this setup, but collection access is untyped until it is complete.
 
 ## Commands

@@ -134,7 +134,7 @@ the superuser dashboard under **Collections > users > Options > OAuth2 > OpenID 
 
 ## Routes
 
-    pocketkit routes
+    go tool pocketkit routes
 
 Add one by creating a file:
 
@@ -146,7 +146,7 @@ Add one by creating a file:
 After the first boot has applied migrations, generate the client types in a second terminal.
 The dev server can keep running, since type generation only reads the database.
 
-    pocketkit types
+    go tool pocketkit types
 
 In 'frontend/src/lib/pb.ts', add the type import and replace the client declaration, keeping the sign-in helper:
 
@@ -156,7 +156,7 @@ In 'frontend/src/lib/pb.ts', add the type import and replace the client declarat
     export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
 
 Commit 'frontend/src/lib/pocketbase-types.ts' and the updated 'pb.ts'.
-After schema changes, apply migrations locally and rerun 'pocketkit types'; commit the regenerated types with the migrations.
+After schema changes, apply migrations locally and rerun 'go tool pocketkit types'; commit the regenerated types with the migrations.
 The initial client works before this setup, but collection access is untyped until it is complete.
 `
 
@@ -208,7 +208,7 @@ const tmplPBClient = `import PocketBase from 'pocketbase';
 
 // Same-origin in production and, thanks to the Vite proxy, in development too.
 // Complete the typed-client setup in README.md after the first boot:
-// run pocketkit types, import TypedPocketBase from './pocketbase-types',
+// run go tool pocketkit types, import TypedPocketBase from './pocketbase-types',
 // and cast this client to it.
 export const pb = new PocketBase(window.location.origin);
 
