@@ -65,6 +65,7 @@ A negative middleware priority explicitly runs before the auth guard and must no
 
 ```go
 pocketkit.New(pocketkit.WithSSO(pocketkit.SSOConfig{
+    Collection:    "users",
     RequiredGroup: "myapp-users",
     SessionMaxAge: 12 * time.Hour,
 }))
@@ -73,6 +74,14 @@ pocketkit.New(pocketkit.WithSSO(pocketkit.SSOConfig{
 The scaffold's SSO migration disables password and OTP login for its auth collection.
 Sign-in requires membership of `RequiredGroup` and a verified email from the OIDC provider; ordinary clients can create accounts only through the OAuth2 flow.
 When integrating an existing app, pair `WithSSO` with a migration calling `pocketkit.MigrateSSO` with the same config.
+With `WithSSO`, protected routes accept only the SSO collection; tokens from other auth collections, including superusers, get 403.
+To allow more, list every collection, e.g. `pocketkit.AuthCollections("users", "_superusers")`.
+If the SSO collection does not exist, the app refuses to serve.
+Authentication does not replace record-level or tenant authorization in custom handlers.
+
+Historical migrations snapshot their settings.
+Changes to the runtime SSO collection or login field need a new migration; do not edit an applied migration.
+
 Without `WithSSO`, existing authentication settings remain unchanged and pocketkit logs a warning.
 `AllowPasswords()` acknowledges that choice and silences the warning; it does not change login settings.
 
@@ -173,17 +182,22 @@ go install github.com/FiretailHosting/pocketkit/cmd/pocketkit@latest
 pocketkit new github.com/you/myapp
 cd myapp
 go mod tidy
-pocketkit dev
+go tool pocketkit dev
 ```
 
 This scaffolds the Go app and a SvelteKit frontend wired to the opinions above,
 then runs PocketBase on `:8090` and the frontend dev server on `:5173`.
+`go tool pocketkit dev --http 127.0.0.1:9090` updates both the backend address and the
+frontend proxy. Existing apps should read `process.env.POCKETKIT_BACKEND_URL`
+in their Vite proxy configuration, with `http://127.0.0.1:8090` as the fallback.
+If scaffolding fails, the command exits unsuccessfully and retains its partial
+output for diagnosis.
 
 Once PocketBase has started and applied migrations, generate types in a second terminal.
 The dev server can keep running, since type generation only reads the database.
 
 ```
-pocketkit types
+go tool pocketkit types
 ```
 
 In `frontend/src/lib/pb.ts`, add the type import and replace the client declaration, keeping the sign-in helper:
@@ -196,7 +210,7 @@ export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
 ```
 
 Commit `frontend/src/lib/pocketbase-types.ts` and the updated `pb.ts`.
-After schema changes, apply migrations locally and rerun `pocketkit types`; commit the regenerated types with the migrations.
+After schema changes, apply migrations locally and rerun `go tool pocketkit types`; commit the regenerated types with the migrations.
 The initial client works before this setup, but collection access is untyped until it is complete.
 
 ## Commands
@@ -208,7 +222,7 @@ The initial client works before this setup, but collection access is untyped unt
 | `pocketkit routes` | List what was discovered |
 | `pocketkit dev` | Regenerate, run, restart on change |
 | `pocketkit types` | Generate frontend TypeScript types |
-| `pocketkit check` | Vet every package, including `_`-prefixed route dirs |
+| `pocketkit check` | Vet and test packages, including `_`-prefixed route dirs |
 
 And in every app you build with it:
 
@@ -218,9 +232,14 @@ And in every app you build with it:
 | `myapp update --check` | Report whether an update exists |
 | `myapp version` | Print version, OS and architecture |
 
-`pocketkit check` exists because `go vet ./...` silently skips directories
-starting with `_`, which is how path parameters are spelled. It passes those
-packages explicitly so nothing goes unchecked.
+`pocketkit check` regenerates wiring, runs `go vet`, and runs `go test`.
+Go's `./...` pattern skips directories starting with `_`, which is how path parameters are spelled.
+Discovered route and hook packages are passed explicitly so their tests run too.
+Tests use the race detector when CGO is enabled, which also needs a C compiler; without CGO, check warns and runs them without it.
+
+New apps include PR and release validation that runs `go tool pocketkit check`
+and rejects stale committed wiring. Existing apps should add these steps to CI;
+upgrading the library does not rewrite application workflows.
 
 ## Reserved paths
 
@@ -228,7 +247,7 @@ PocketBase serves its own routes under `/api`. A route file that lands on one
 compiles fine and then panics at startup, so `pocketkit gen` refuses first:
 
 ```
-backups, batch, collections, crons, files, health, logs, realtime, settings, sql
+backups, batch, collections, crons, files, health, logs, oauth2-redirect, realtime, settings, sql
 ```
 
 Only the first segment is reserved - `/api/coins/health` is fine.
@@ -239,7 +258,7 @@ Only the first segment is reserved - `/api/coins/health` is fine.
 plain `go build`, and CI checks it is current with
 
 ```
-go tool pocketkit gen && git diff --exit-code pocketkit_gen.go
+go tool pocketkit check && git diff --exit-code pocketkit_gen.go
 ```
 
 The `tool` directive in an app's `go.mod` pins the CLI to the same version as

@@ -11,16 +11,17 @@ import (
 // these compiles fine and then panics at startup with a router pattern conflict,
 // which is a miserable way to find out -- so pocketkit refuses at generate time.
 var reservedSegments = map[string]string{
-	"backups":     "backup management",
-	"batch":       "batch API",
-	"collections": "collection and record CRUD",
-	"crons":       "cron management",
-	"files":       "file serving",
-	"health":      "health check",
-	"logs":        "request logs",
-	"realtime":    "realtime subscriptions",
-	"settings":    "instance settings",
-	"sql":         "SQL console",
+	"backups":         "backup management",
+	"batch":           "batch API",
+	"collections":     "collection and record CRUD",
+	"crons":           "cron management",
+	"files":           "file serving",
+	"health":          "health check",
+	"logs":            "request logs",
+	"oauth2-redirect": "OAuth2 callback",
+	"realtime":        "realtime subscriptions",
+	"settings":        "instance settings",
+	"sql":             "SQL console",
 }
 
 // checkReserved reports an error if urlPath would collide with a built-in route.

@@ -15,11 +15,13 @@ import (
 )
 
 type processReady struct {
-	PID     int
-	Address string
+	PID        int
+	Address    string
+	BackendURL string
 }
 
-// The subprocess acts like go run/npm and a child server that ignores SIGTERM.
+// The subprocess acts like go run/npm and a child server that ignores graceful
+// stop requests: SIGTERM on Unix and Ctrl+Break on Windows.
 func TestDevProcessHelper(t *testing.T) {
 	mode := os.Getenv("POCKETKIT_TEST_PROCESS")
 	if mode == "" {
@@ -43,13 +45,15 @@ func TestDevProcessHelper(t *testing.T) {
 		_ = cmd.Wait()
 		os.Exit(0)
 	}
-	signal.Ignore(syscall.SIGTERM)
+	// Catch and drop stop requests. signal.Ignore would let Windows' default
+	// Ctrl+Break handler terminate the process.
+	signal.Notify(make(chan os.Signal, 1), os.Interrupt, syscall.SIGTERM)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	ready, err := json.Marshal(processReady{PID: os.Getpid(), Address: listener.Addr().String()})
+	ready, err := json.Marshal(processReady{PID: os.Getpid(), Address: listener.Addr().String(), BackendURL: os.Getenv("POCKETKIT_BACKEND_URL")})
 	if err != nil {
 		os.Exit(1)
 	}
@@ -72,7 +76,11 @@ func waitForServer(t *testing.T, file string) processReady {
 		data, err := os.ReadFile(file)
 		var ready processReady
 		if err == nil && json.Unmarshal(data, &ready) == nil {
-			t.Cleanup(func() { _ = syscall.Kill(ready.PID, syscall.SIGKILL) })
+			t.Cleanup(func() {
+				if process, err := os.FindProcess(ready.PID); err == nil {
+					_ = process.Kill()
+				}
+			})
 			return ready
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -105,7 +113,7 @@ func TestStopProcessCleansUpGroup(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) })
+			t.Cleanup(p.tree.kill)
 			ready := waitForServer(t, readyFile)
 			stopped := make(chan struct{})
 			go func() { stopProcess(p); close(stopped) }()
@@ -132,7 +140,7 @@ func TestLauncherExitCleansUpChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) })
+	t.Cleanup(p.tree.kill)
 	ready := waitForServer(t, readyFile)
 	writeTestFile(t, dir, "exit", "exit")
 	select {
@@ -155,10 +163,13 @@ func TestFrontendCancellationIsBounded(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		runFrontend(ctx, root, []string{os.Args[0], "-test.run=^TestDevProcessHelper$"})
+		runFrontend(ctx, root, []string{os.Args[0], "-test.run=^TestDevProcessHelper$"}, "http://127.0.0.1:9090")
 		close(done)
 	}()
 	ready := waitForServer(t, readyFile)
+	if ready.BackendURL != "http://127.0.0.1:9090" {
+		t.Errorf("frontend backend URL = %q", ready.BackendURL)
+	}
 	cancel()
 	select {
 	case <-done:
