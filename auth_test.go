@@ -11,26 +11,31 @@ import (
 	"github.com/pocketbase/pocketbase/tools/router"
 )
 
-// Match the scaffold's explicit policy: SSO sessions and collection restrictions
-// must both hold. Other apps can deliberately allow additional auth collections.
+// SSO restricts protected routes to its collection by default; apps can
+// deliberately allow additional auth collections.
 func TestSSOWithCollectionRestriction(t *testing.T) {
 	for _, tc := range []struct {
-		name, collection string
-		age              time.Duration
-		allowSuperuser   bool
-		want             int
+		name, collection     string
+		age                  time.Duration
+		defaultSSOCollection bool
+		allowSuperuser       bool
+		want                 int
 	}{
 		{name: "anonymous", want: http.StatusUnauthorized},
 		{name: "active SSO user", collection: "users", want: http.StatusOK},
+		{name: "default SSO collection", collection: "users", defaultSSOCollection: true, want: http.StatusOK},
 		{name: "expired SSO user", collection: "users", age: 2 * time.Hour, want: http.StatusUnauthorized},
 		{name: "unrelated identity", collection: "customers", want: http.StatusForbidden},
 		{name: "superuser excluded", collection: "_superusers", want: http.StatusForbidden},
 		{name: "superuser explicitly allowed", collection: "_superusers", allowSuperuser: true, want: http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			ssoCollection := "users"
+			if tc.defaultSSOCollection {
+				ssoCollection = ""
+			}
 			cfg := Config{}
-			WithSSO(SSOConfig{Collection: "users", RequiredGroup: "app-users", SessionMaxAge: time.Hour})(&cfg)
-			AuthCollections("users")(&cfg)
+			WithSSO(SSOConfig{Collection: ssoCollection, RequiredGroup: "app-users", SessionMaxAge: time.Hour})(&cfg)
 			if tc.allowSuperuser {
 				AuthCollections("users", "_superusers")(&cfg)
 			}
@@ -68,5 +73,27 @@ func TestSSOWithCollectionRestriction(t *testing.T) {
 				t.Fatalf("status = %d, want %d; %s", response.Code, tc.want, response.Body.String())
 			}
 		})
+	}
+}
+
+// SSOConfig accepts a collection ID, but RequireAuth compares names. A missing
+// collection must stop serving rather than leave routes unrestricted.
+func TestRouteAuthCollectionsResolvesSSOCollection(t *testing.T) {
+	app := &App{PocketBase: pocketbase.NewWithConfig(pocketbase.Config{DefaultDataDir: t.TempDir()})}
+	if err := app.Bootstrap(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { app.ResetBootstrapState() })
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.cfg.SSO = &SSOConfig{Collection: users.Id}
+	if collections, err := app.routeAuthCollections(); err != nil || len(collections) != 1 || collections[0] != "users" {
+		t.Fatalf("collection ID resolved to %v, %v; want [users]", collections, err)
+	}
+	app.cfg.SSO = &SSOConfig{Collection: "missing"}
+	if _, err := app.routeAuthCollections(); err == nil {
+		t.Fatal("missing SSO collection was accepted")
 	}
 }

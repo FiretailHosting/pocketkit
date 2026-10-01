@@ -64,21 +64,19 @@ A negative middleware priority explicitly runs before the auth guard and must no
 [pocketbase-sso](https://github.com/FiretailHosting/pocketbase-sso):
 
 ```go
-pocketkit.New(
-    pocketkit.WithSSO(pocketkit.SSOConfig{
-        Collection: "users",
-        RequiredGroup: "myapp-users",
-        SessionMaxAge: 12 * time.Hour,
-    }),
-    pocketkit.AuthCollections("users"),
-)
+pocketkit.New(pocketkit.WithSSO(pocketkit.SSOConfig{
+    Collection:    "users",
+    RequiredGroup: "myapp-users",
+    SessionMaxAge: 12 * time.Hour,
+}))
 ```
 
 The scaffold's SSO migration disables password and OTP login for its auth collection.
 Sign-in requires membership of `RequiredGroup` and a verified email from the OIDC provider; ordinary clients can create accounts only through the OAuth2 flow.
 When integrating an existing app, pair `WithSSO` with a migration calling `pocketkit.MigrateSSO` with the same config.
-`WithSSO` does not restrict which auth collections can call protected routes; without `AuthCollections`, any auth record passes, including superusers.
-Set `AuthCollections` to the SSO collection to restrict them, as the scaffold does.
+With `WithSSO`, protected routes accept only the SSO collection; tokens from other auth collections, including superusers, get 403.
+To allow more, list every collection, e.g. `pocketkit.AuthCollections("users", "_superusers")`.
+If the SSO collection does not exist, the app refuses to serve.
 Authentication does not replace record-level or tenant authorization in custom handlers.
 
 Historical migrations snapshot their settings.

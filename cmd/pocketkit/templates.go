@@ -38,7 +38,6 @@ func main() {
 	app := pocketkit.New(
 		pocketkit.WithFrontendFS(frontend),
 		pocketkit.WithSSO(auth.SSO),
-		pocketkit.AuthCollections(auth.SSO.Collection),
 	)
 
 	if err := app.Start(); err != nil {
