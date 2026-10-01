@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"go/format"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +42,34 @@ func TestNewReportsGenerationFailure(t *testing.T) {
 	err := cmdNew([]string{"", filepath.Join(t.TempDir(), "app")})
 	if err == nil || !strings.Contains(err.Error(), "generate wiring") {
 		t.Fatalf("expected generation failure, got %v", err)
+	}
+}
+
+func TestNewGeneratesFormattedGo(t *testing.T) {
+	fakeFrontendTools(t, 0)
+	root := filepath.Join(t.TempDir(), "app")
+	if err := cmdNew([]string{"example.com/app", root}); err != nil {
+		t.Fatal(err)
+	}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		formatted, err := format.Source(source)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if !bytes.Equal(source, formatted) {
+			t.Errorf("%s is not gofmt-formatted", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

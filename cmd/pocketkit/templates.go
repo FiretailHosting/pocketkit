@@ -326,7 +326,7 @@ import (
 // RequiredGroup must match a real group from your OIDC provider; until it does,
 // nobody can sign in, which is the correct failure for an OIDC-only app.
 var SSO = pocketkit.SSOConfig{
-	Collection: "users",
+	Collection:    "users",
 	RequiredGroup: "%s-users",
 
 	// How long a session survives after the last OIDC sign-in. This is the
@@ -354,9 +354,9 @@ func init() {
 		// Keep this snapshot independent of mutable runtime configuration.
 		// Apply later schema changes in a new migration.
 		return pocketkit.MigrateSSO(app, pocketkit.SSOConfig{
-			Collection: "users",
-			Provider: "oidc",
-			LoginField: "sso_login_at",
+			Collection:    "users",
+			Provider:      "oidc",
+			LoginField:    "sso_login_at",
 			RequiredGroup: "%s-users",
 			SessionMaxAge: 12 * time.Hour,
 		})
