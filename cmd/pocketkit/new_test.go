@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -16,8 +17,13 @@ import (
 func fakeFrontendTools(t *testing.T, exitCode int) {
 	t.Helper()
 	bin := t.TempDir()
-	for _, name := range []string{"npx", "npm"} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte(fmt.Sprintf("#!/bin/sh\nexit %d\n", exitCode)), 0o755); err != nil {
+	name, script := "%s", "#!/bin/sh\nexit %d\n"
+	if runtime.GOOS == "windows" {
+		name, script = "%s.cmd", "@exit /b %d\r\n"
+	}
+	for _, tool := range []string{"npx", "npm"} {
+		path := filepath.Join(bin, fmt.Sprintf(name, tool))
+		if err := os.WriteFile(path, []byte(fmt.Sprintf(script, exitCode)), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -133,22 +133,30 @@ const shutdownTimeout = 3 * time.Second
 // devProcess owns the one Wait call for a command. Closing done publishes err.
 type devProcess struct {
 	cmd  *exec.Cmd
+	tree *processTree
 	done chan struct{}
 	err  error
 }
 
 func startProcess(cmd *exec.Cmd) (*devProcess, error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	prepareProcessTree(cmd)
 	cmd.WaitDelay = shutdownTimeout
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	p := &devProcess{cmd: cmd, done: make(chan struct{})}
+	tree, err := trackProcessTree(cmd)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, err
+	}
+	p := &devProcess{cmd: cmd, tree: tree, done: make(chan struct{})}
 	go func() {
 		p.err = cmd.Wait()
 		// A launcher (go run, npm, bun) can exit before its children. Clean
 		// them up even when the launcher exited naturally or failed to build.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		tree.kill()
+		tree.close()
 		close(p.done)
 	}()
 	return p, nil
@@ -165,13 +173,13 @@ func stopProcess(p *devProcess) {
 		return
 	default:
 	}
-	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+	p.tree.interrupt()
 	timer := time.NewTimer(shutdownTimeout)
 	defer timer.Stop()
 	select {
 	case <-p.done:
 	case <-timer.C:
-		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+		p.tree.kill()
 		<-p.done
 	}
 }
