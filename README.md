@@ -77,14 +77,12 @@ pocketkit.New(
 The scaffold's SSO migration disables password and OTP login for its auth collection.
 Sign-in requires membership of `RequiredGroup` and a verified email from the OIDC provider; ordinary clients can create accounts only through the OAuth2 flow.
 When integrating an existing app, pair `WithSSO` with a migration calling `pocketkit.MigrateSSO` with the same config.
-The scaffold also sets `AuthCollections("users")`, so tokens from unrelated auth
-collections cannot access its protected routes. For existing apps, set
-`AuthCollections` explicitly alongside `WithSSO`; SSO alone does not restrict the
-route guard to that collection. Authentication does not replace record-level or
-tenant authorization in custom handlers.
+`WithSSO` does not restrict which auth collections can call protected routes; without `AuthCollections`, any auth record passes, including superusers.
+Set `AuthCollections` to the SSO collection to restrict them, as the scaffold does.
+Authentication does not replace record-level or tenant authorization in custom handlers.
 
-Historical migrations snapshot their settings. Changes to the runtime SSO
-collection or login field need a new migration; do not edit an applied migration.
+Historical migrations snapshot their settings.
+Changes to the runtime SSO collection or login field need a new migration; do not edit an applied migration.
 
 Without `WithSSO`, existing authentication settings remain unchanged and pocketkit logs a warning.
 `AllowPasswords()` acknowledges that choice and silences the warning; it does not change login settings.

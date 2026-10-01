@@ -265,9 +265,22 @@ func watchSource(ctx context.Context, w *fsnotify.Watcher, root string, kick fun
 			if !ok {
 				return fmt.Errorf("source watcher closed")
 			}
-			return fmt.Errorf("watch source: %w", err)
+			if err := recoverWatchError(w, root, err); err != nil {
+				return err
+			}
+			kick()
 		}
 	}
+}
+
+// recoverWatchError rescans after dropped events, which are recoverable, and
+// returns any other watcher error so dev exits.
+func recoverWatchError(w *fsnotify.Watcher, root string, watchErr error) error {
+	if !errors.Is(watchErr, fsnotify.ErrEventOverflow) {
+		return fmt.Errorf("watch source: %w", watchErr)
+	}
+	fmt.Fprintf(os.Stderr, "pocketkit: watch: %v; rescanning\n", watchErr)
+	return syncWatchDirs(w, root)
 }
 
 // devBackendURL converts a listening address into a destination the proxy can dial.
