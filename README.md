@@ -224,7 +224,7 @@ The initial client works before this setup, but collection access is untyped unt
 | `pocketkit routes` | List what was discovered |
 | `pocketkit dev` | Regenerate, run, restart on change |
 | `pocketkit types` | Generate frontend TypeScript types |
-| `pocketkit check` | Vet and race-test packages, including `_`-prefixed route dirs |
+| `pocketkit check` | Vet and test packages, including `_`-prefixed route dirs |
 
 And in every app you build with it:
 
@@ -234,11 +234,10 @@ And in every app you build with it:
 | `myapp update --check` | Report whether an update exists |
 | `myapp version` | Print version, OS and architecture |
 
-`pocketkit check` regenerates wiring, runs `go vet`, and runs `go test -race`.
-Go's `./...` pattern skips directories starting with `_`, which is how path
-parameters are spelled. Discovered route and hook packages are passed explicitly
-so their tests run too. The race detector requires a supported Go platform and
-CGO/C compiler; run checks on the development or CI host before cross-compiling.
+`pocketkit check` regenerates wiring, runs `go vet`, and runs `go test`.
+Go's `./...` pattern skips directories starting with `_`, which is how path parameters are spelled.
+Discovered route and hook packages are passed explicitly so their tests run too.
+Tests use the race detector when CGO is enabled, which also needs a C compiler; without CGO, check warns and runs them without it.
 
 New apps include PR and release validation that runs `go tool pocketkit check`
 and rejects stale committed wiring. Existing apps should add these steps to CI;

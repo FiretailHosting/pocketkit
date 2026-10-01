@@ -116,9 +116,9 @@ the frontend proxy follows it automatically.
 
     go tool pocketkit check
 
-This regenerates wiring, vets packages, and runs tests with the race detector,
-including parameter-route packages skipped by 'go test ./...'. It requires CGO
-and a C compiler on a platform supported by Go's race detector.
+This regenerates wiring, vets packages, and runs tests, including
+parameter-route packages skipped by 'go test ./...'. Tests use the race
+detector when CGO is enabled, which also needs a C compiler.
 Commit regenerated wiring. PR and release workflows reject stale wiring and
 failed checks.
 
