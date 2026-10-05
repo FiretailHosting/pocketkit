@@ -103,21 +103,38 @@ const tmplReadme = "# %s\n\n" + `Built with [pocketkit](https://github.com/Firet
 ## Develop
 
     go mod tidy
-    pocketkit dev
+    go tool pocketkit dev
 
 This regenerates route wiring, starts PocketBase on :8090, and runs the
 SvelteKit dev server on :5173 with '/api' proxied to PocketBase.
+
+Use 'go tool pocketkit dev --http 127.0.0.1:9090' to change the backend port;
+the frontend proxy follows it automatically.
+
+## Validate
+
+    go tool pocketkit check
+
+This regenerates wiring, vets packages, and runs tests, including
+parameter-route packages skipped by 'go test ./...'. Tests use the race
+detector when CGO is enabled, which also needs a C compiler.
+Commit regenerated wiring. PR and release workflows reject stale wiring and
+failed checks.
 
 ## Sign-in
 
 The scaffold's migration disables password and OTP login for the users collection.
 The configured SSO hooks enforce group membership and session age.
+Protected routes accept only the configured users collection. Custom handlers
+must still enforce record-level and tenant authorization.
+Changes to the SSO collection or login field require a new migration;
+historical migrations keep their original settings.
 Configure an OIDC provider that supplies a verified email and groups claim in
 the superuser dashboard under **Collections > users > Options > OAuth2 > OpenID Connect**.
 
 ## Routes
 
-    pocketkit routes
+    go tool pocketkit routes
 
 Add one by creating a file:
 
@@ -129,7 +146,7 @@ Add one by creating a file:
 After the first boot has applied migrations, generate the client types in a second terminal.
 The dev server can keep running, since type generation only reads the database.
 
-    pocketkit types
+    go tool pocketkit types
 
 In 'frontend/src/lib/pb.ts', add the type import and replace the client declaration, keeping the sign-in helper:
 
@@ -139,7 +156,7 @@ In 'frontend/src/lib/pb.ts', add the type import and replace the client declarat
     export const pb = new PocketBase(window.location.origin) as TypedPocketBase;
 
 Commit 'frontend/src/lib/pocketbase-types.ts' and the updated 'pb.ts'.
-After schema changes, apply migrations locally and rerun 'pocketkit types'; commit the regenerated types with the migrations.
+After schema changes, apply migrations locally and rerun 'go tool pocketkit types'; commit the regenerated types with the migrations.
 The initial client works before this setup, but collection access is untyped until it is complete.
 `
 
@@ -168,7 +185,7 @@ import { defineConfig } from 'vite';
 
 // In production PocketBase serves the built frontend, so the API is same-origin.
 // The dev proxy reproduces that, which keeps auth cookies working in both.
-const POCKETBASE = 'http://127.0.0.1:8090';
+const POCKETBASE = process.env.POCKETKIT_BACKEND_URL ?? 'http://127.0.0.1:8090';
 
 export default defineConfig({
 	plugins: [sveltekit()],
@@ -191,7 +208,7 @@ const tmplPBClient = `import PocketBase from 'pocketbase';
 
 // Same-origin in production and, thanks to the Vite proxy, in development too.
 // Complete the typed-client setup in README.md after the first boot:
-// run pocketkit types, import TypedPocketBase from './pocketbase-types',
+// run go tool pocketkit types, import TypedPocketBase from './pocketbase-types',
 // and cast this client to it.
 export const pb = new PocketBase(window.location.origin);
 
@@ -243,9 +260,9 @@ jobs:
           bun run build
 
       # A stale pocketkit_gen.go would silently ship missing routes.
-      - name: Check generated wiring is current
+      - name: Validate Go and generated wiring
         run: |
-          go tool pocketkit gen
+          go tool pocketkit check
           git diff --exit-code pocketkit_gen.go
 
       - name: Build binaries
@@ -293,8 +310,8 @@ jobs:
 
 const tmplAuthConfig = `// Package auth holds this app's SSO sign-in settings.
 //
-// They live here because both main.go and the migration that applies them to
-// the users collection need the same values.
+// Historical migrations snapshot their own settings. Changes to Collection or
+// LoginField need a new migration so fresh and upgraded databases agree.
 package auth
 
 import (
@@ -308,6 +325,7 @@ import (
 // RequiredGroup must match a real group from your OIDC provider; until it does,
 // nobody can sign in, which is the correct failure for an OIDC-only app.
 var SSO = pocketkit.SSOConfig{
+	Collection:    "users",
 	RequiredGroup: "%s-users",
 
 	// How long a session survives after the last OIDC sign-in. This is the
@@ -320,11 +338,11 @@ var SSO = pocketkit.SSOConfig{
 const tmplAuthMigration = `package migrations
 
 import (
+	"time"
+
 	"github.com/FiretailHosting/pocketkit"
 	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-
-	"%s/internal/auth"
 )
 
 // Applies the SSO sign-in policy to the users collection: password and OTP
@@ -332,7 +350,40 @@ import (
 // server-managed sso_login_at field the session cap reads.
 func init() {
 	m.Register(func(app core.App) error {
-		return pocketkit.MigrateSSO(app, auth.SSO)
+		// Keep this snapshot independent of mutable runtime configuration.
+		// Apply later schema changes in a new migration.
+		return pocketkit.MigrateSSO(app, pocketkit.SSOConfig{
+			Collection:    "users",
+			Provider:      "oidc",
+			LoginField:    "sso_login_at",
+			RequiredGroup: "%s-users",
+			SessionMaxAge: 12 * time.Hour,
+		})
 	}, nil)
 }
+`
+
+const tmplCheckWorkflow = `name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate Go and generated wiring
+        run: |
+          go tool pocketkit check
+          git diff --exit-code pocketkit_gen.go
 `

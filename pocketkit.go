@@ -13,6 +13,7 @@
 package pocketkit
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -53,8 +54,9 @@ type Config struct {
 	// routes with explicit auth middleware. Off by default.
 	PublicByDefault bool
 
-	// AuthCollections optionally restricts which collections satisfy the
-	// default auth requirement. Empty means any auth collection.
+	// AuthCollections restricts which collections satisfy the default auth
+	// requirement. Empty means the SSO collection when SSO is configured, and
+	// any auth collection otherwise.
 	AuthCollections []string
 }
 
@@ -108,6 +110,8 @@ func PublicByDefault() Option {
 }
 
 // AuthCollections restricts which collections satisfy the auth requirement.
+// It replaces the SSO-only default, so list the SSO collection too when
+// widening access, e.g. AuthCollections("users", "_superusers").
 func AuthCollections(names ...string) Option {
 	return func(c *Config) { c.AuthCollections = names }
 }
@@ -146,11 +150,15 @@ func (a *App) bindHooks() {
 // bindRoutes attaches every route found under api/, then the frontend.
 func (a *App) bindRoutes() {
 	a.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		authCollections, err := a.routeAuthCollections()
+		if err != nil {
+			return err
+		}
 		for _, r := range Routes() {
 			route := se.Router.Route(r.Method, r.Path, r.Handler)
 
 			if a.requiresAuth(r) {
-				auth := apis.RequireAuth(a.cfg.AuthCollections...)
+				auth := apis.RequireAuth(authCollections...)
 				// Keep explicit RequireAuth middleware independent of this guard.
 				// PocketBase replaces handlers sharing an ID.
 				auth.Id = "pocketkitRequireAuth"
@@ -163,6 +171,26 @@ func (a *App) bindRoutes() {
 
 		return se.Next()
 	})
+}
+
+// routeAuthCollections returns the collections the default auth guard accepts.
+// With SSO and no explicit list, only the SSO collection passes, so tokens from
+// other auth collections, including superusers, cannot reach app routes.
+func (a *App) routeAuthCollections() ([]string, error) {
+	if len(a.cfg.AuthCollections) > 0 || a.cfg.SSO == nil {
+		return a.cfg.AuthCollections, nil
+	}
+	// Matches pocketbase-sso's default collection.
+	nameOrID := a.cfg.SSO.Collection
+	if nameOrID == "" {
+		nameOrID = "users"
+	}
+	// RequireAuth compares collection names, and SSOConfig accepts an ID.
+	collection, err := a.FindCollectionByNameOrId(nameOrID)
+	if err != nil {
+		return nil, fmt.Errorf("pocketkit: find SSO collection %q: %w", nameOrID, err)
+	}
+	return []string{collection.Name}, nil
 }
 
 // requiresAuth applies the default-deny opinion.

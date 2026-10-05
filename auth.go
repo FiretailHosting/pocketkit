@@ -22,6 +22,8 @@ type SSOConfig = sso.Config
 //
 // Everything else defaults: the users collection, the oidc provider, and the
 // sso_login_at field.
+// Protected routes then accept only the SSO collection; use AuthCollections to
+// allow others.
 func WithSSO(config SSOConfig) Option {
 	return func(c *Config) { c.SSO = &config }
 }

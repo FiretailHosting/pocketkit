@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -33,6 +35,11 @@ func cmdDev(args []string) error {
 		return err
 	}
 
+	backendURL, err := devBackendURL(*addr)
+	if err != nil {
+		return err
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -43,31 +50,36 @@ func cmdDev(args []string) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				runFrontend(ctx, root, cmd)
+				runFrontend(ctx, root, cmd, backendURL)
 			}()
 		}
 	}
 
+	backendErr := make(chan error, 1)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runBackend(ctx, root, *addr)
+		backendErr <- runBackend(ctx, root, *addr)
+		stop()
 	}()
 
 	wg.Wait()
-	return nil
+	return <-backendErr
 }
 
 // runBackend regenerates, starts the app, and restarts it whenever Go source changes.
-func runBackend(ctx context.Context, root, addr string) {
+func runBackend(ctx context.Context, root, addr string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "pocketkit: watch: %v\n", err)
-		return
+		return fmt.Errorf("watch source: %w", err)
 	}
 	defer watcher.Close()
 
-	addWatchDirs(watcher, root)
+	if err := syncWatchDirs(watcher, root); err != nil {
+		return err
+	}
 
 	restart := make(chan struct{}, 1)
 	kick := func() {
@@ -78,50 +90,17 @@ func runBackend(ctx context.Context, root, addr string) {
 	}
 	kick()
 
-	go func() {
-		var timer *time.Timer
-		defer func() {
-			if timer != nil {
-				timer.Stop()
-			}
-		}()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case ev, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if !strings.HasSuffix(ev.Name, ".go") || filepath.Base(ev.Name) == GenFile {
-					// New directories still need watching even though they are not .go files.
-					if ev.Op&fsnotify.Create != 0 {
-						if st, err := os.Stat(ev.Name); err == nil && st.IsDir() {
-							_ = watcher.Add(ev.Name)
-							kick()
-						}
-					}
-					continue
-				}
-				if timer != nil {
-					timer.Stop()
-				}
-				timer = time.AfterFunc(debounce, kick)
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				fmt.Fprintf(os.Stderr, "pocketkit: watch: %v\n", err)
-			}
-		}
-	}()
+	watchErr := make(chan error, 1)
+	go func() { watchErr <- watchSource(ctx, watcher, root, kick) }()
 
 	var current *devProcess
+	defer func() { stopProcess(current) }()
 	for {
 		select {
 		case <-ctx.Done():
-			stopProcess(current)
-			return
+			return nil
+		case err := <-watchErr:
+			return err
 		case <-restart:
 			stopProcess(current)
 			current = nil
@@ -134,7 +113,6 @@ func runBackend(ctx context.Context, root, addr string) {
 			if changed {
 				fmt.Printf("\npocketkit: wired %d route(s), %d hook(s)\n", len(res.Routes), len(res.Hooks))
 			}
-			addWatchDirs(watcher, root)
 
 			cmd := exec.Command("go", "run", ".", "serve", "--http", addr)
 			cmd.Dir = root
@@ -155,22 +133,30 @@ const shutdownTimeout = 3 * time.Second
 // devProcess owns the one Wait call for a command. Closing done publishes err.
 type devProcess struct {
 	cmd  *exec.Cmd
+	tree *processTree
 	done chan struct{}
 	err  error
 }
 
 func startProcess(cmd *exec.Cmd) (*devProcess, error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	prepareProcessTree(cmd)
 	cmd.WaitDelay = shutdownTimeout
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	p := &devProcess{cmd: cmd, done: make(chan struct{})}
+	tree, err := trackProcessTree(cmd)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, err
+	}
+	p := &devProcess{cmd: cmd, tree: tree, done: make(chan struct{})}
 	go func() {
 		p.err = cmd.Wait()
 		// A launcher (go run, npm, bun) can exit before its children. Clean
 		// them up even when the launcher exited naturally or failed to build.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		tree.kill()
+		tree.close()
 		close(p.done)
 	}()
 	return p, nil
@@ -187,32 +173,138 @@ func stopProcess(p *devProcess) {
 		return
 	default:
 	}
-	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+	p.tree.interrupt()
 	timer := time.NewTimer(shutdownTimeout)
 	defer timer.Stop()
 	select {
 	case <-p.done:
 	case <-timer.C:
-		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
+		p.tree.kill()
 		<-p.done
 	}
 }
 
-// addWatchDirs watches every directory that can hold app Go source.
-func addWatchDirs(w *fsnotify.Watcher, root string) {
-	_ = w.Add(root)
-	for _, sub := range []string{"api", "hooks", "migrations", "internal"} {
-		dir := filepath.Join(root, sub)
-		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
+// sourceDirs are the subtrees that can contain application Go source.
+var sourceDirs = []string{"api", "hooks", "migrations", "internal"}
+
+// syncWatchDirs adds populated directories moved into the tree and drops watches
+// on directories moved out. Only missing paths are ignored during rename races.
+func syncWatchDirs(w *fsnotify.Watcher, root string) error {
+	wanted := map[string]bool{root: true}
+	for _, sub := range sourceDirs {
+		err := filepath.WalkDir(filepath.Join(root, sub), func(p string, d fs.DirEntry, err error) error {
+			if os.IsNotExist(err) {
 				return nil
 			}
+			if err != nil {
+				return err
+			}
 			if d.IsDir() {
-				_ = w.Add(p)
+				wanted[p] = true
 			}
 			return nil
 		})
+		if err != nil {
+			return fmt.Errorf("discover source directories: %w", err)
+		}
 	}
+	for _, watched := range w.WatchList() {
+		if wanted[watched] {
+			delete(wanted, watched)
+			continue
+		}
+		// Windows reports a deleted directory as missing rather than unwatched.
+		if err := w.Remove(watched); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("unwatch %s: %w", watched, err)
+		}
+	}
+	for dir := range wanted {
+		if err := w.Add(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("watch %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+func sourceEvent(root string, ev fsnotify.Event) bool {
+	rel, err := filepath.Rel(root, ev.Name)
+	if err != nil || filepath.Base(rel) == GenFile {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) == 1 && (strings.HasSuffix(rel, ".go") || rel == "go.mod" || rel == "go.sum") {
+		return true
+	}
+	for _, dir := range sourceDirs {
+		if parts[0] == dir {
+			return strings.HasSuffix(rel, ".go") || ev.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0
+		}
+	}
+	return false
+}
+
+func watchSource(ctx context.Context, w *fsnotify.Watcher, root string, kick func()) error {
+	var timer *time.Timer
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-w.Events:
+			if !ok {
+				return fmt.Errorf("source watcher closed")
+			}
+			if !sourceEvent(root, ev) {
+				continue
+			}
+			if ev.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
+				if err := syncWatchDirs(w, root); err != nil {
+					return err
+				}
+			}
+			if timer != nil {
+				timer.Stop()
+			}
+			timer = time.AfterFunc(debounce, kick)
+		case err, ok := <-w.Errors:
+			if !ok {
+				return fmt.Errorf("source watcher closed")
+			}
+			if err := recoverWatchError(w, root, err); err != nil {
+				return err
+			}
+			kick()
+		}
+	}
+}
+
+// recoverWatchError rescans after dropped events, which are recoverable, and
+// returns any other watcher error so dev exits.
+func recoverWatchError(w *fsnotify.Watcher, root string, watchErr error) error {
+	if !errors.Is(watchErr, fsnotify.ErrEventOverflow) {
+		return fmt.Errorf("watch source: %w", watchErr)
+	}
+	fmt.Fprintf(os.Stderr, "pocketkit: watch: %v; rescanning\n", watchErr)
+	return syncWatchDirs(w, root)
+}
+
+// devBackendURL converts a listening address into a destination the proxy can dial.
+func devBackendURL(addr string) (string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("invalid --http address %q: %w", addr, err)
+	}
+	if host == "" || host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	if host == "::" {
+		host = "::1"
+	}
+	return "http://" + net.JoinHostPort(host, port), nil
 }
 
 // frontendDevCommand returns the package manager command for frontend/, if present.
@@ -229,9 +321,10 @@ func frontendDevCommand(root string) ([]string, bool) {
 	return nil, false
 }
 
-func runFrontend(ctx context.Context, root string, argv []string) {
+func runFrontend(ctx context.Context, root string, argv []string, backendURL string) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = filepath.Join(root, "frontend")
+	cmd.Env = append(os.Environ(), "POCKETKIT_BACKEND_URL="+backendURL)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	p, err := startProcess(cmd)
